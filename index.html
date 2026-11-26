@@ -226,6 +226,14 @@ dialog::backdrop{background:#0008}
 dialog[open]{animation:dlgIn 220ms var(--ease-out)}dialog[open]::backdrop{animation:fade 200ms ease}
 @keyframes dlgIn{from{opacity:0;transform:scale(.96)}}@keyframes fade{from{opacity:0}}
 @keyframes up{from{opacity:0;transform:translateY(8px)}}
+.bvct{flex-wrap:wrap}.bvct>div{flex:1 1 240px}.bvct .due{text-align:left}.bvct .due b{max-width:none!important}
+.mets.t5{grid-template-columns:repeat(5,minmax(0,1fr))}.mets.t5 .met{grid-column:auto}
+.bvcard{margin-top:12px;background:var(--card);border:1px solid var(--line);border-left:5px solid var(--acc);border-radius:16px;padding:16px 18px;display:grid;grid-template-columns:minmax(0,1.2fr) minmax(0,1fr) auto;gap:14px 22px;align-items:center}
+.bvl{display:flex;gap:10px;align-items:center;margin:4px 0}.bvl b{font:800 30px "Barlow Condensed",Barlow,sans-serif}
+.bvp small,.bvr small{display:block;color:var(--mute);font-size:12px}.bvp b{display:block;line-height:1.25}
+.bvr b{font:800 26px "Barlow Condensed",Barlow,sans-serif;display:block}.bvr.venc b{color:var(--brick)}
+button.card.colab{text-align:left;font:inherit;color:inherit;cursor:pointer;transition:transform 160ms var(--ease-out),border-color 160ms}button.card.colab:active{transform:scale(.98)}
+@media(hover:hover) and (pointer:fine){button.card.colab:hover{border-color:var(--acc)}}
 pre,.scroll{overflow-x:auto}
 @media(max-width:900px){.kpis{grid-template-columns:repeat(3,minmax(0,1fr))}.tiers{grid-template-columns:repeat(2,minmax(0,1fr))}.hero{grid-template-columns:minmax(0,1fr)}}
 @media(max-width:760px){
@@ -240,6 +248,8 @@ pre,.scroll{overflow-x:auto}
  .capa{grid-template-columns:minmax(0,1fr);padding:18px;gap:14px}.mega{min-height:72px;font-size:22px}
  .mets{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.met{padding:14px;grid-column:span 1}.met.big{grid-column:span 2}.met:last-child{grid-column:span 2}
  .v-inicio .fab{display:none}
+ .bvcard{grid-template-columns:minmax(0,1fr)}
+ .mets.t5{grid-template-columns:repeat(2,minmax(0,1fr))}.mets.t5 .met:last-child{grid-column:span 2}
  main{padding:18px 16px calc(150px + var(--safeB))}
  #toast{bottom:calc(150px + var(--safeB))}
  dialog{width:100%;max-width:100%;height:100dvh;max-height:100dvh;border-radius:0;margin:0}
@@ -291,6 +301,7 @@ pre,.scroll{overflow-x:auto}
   <a href="#ranking" class="dsk">Ranking</a>
   <a href="#bonus"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3l2.6 5.6 6 .7-4.5 4.1 1.2 6L12 16.4 6.7 19.4l1.2-6L3.4 9.3l6-.7z"/></svg>Bônus</a>
   <a href="#triagem" class="dsk" data-tri>Triagem</a>
+  <a href="#time" class="dsk" data-admin hidden>Desempenho</a>
   <a href="#notas" class="dsk" data-admin hidden>Notas</a>
   <a href="#equipe" class="dsk" data-admin hidden>Equipe</a>
   <a href="#ajustes" class="dsk">Ajustes</a>

@@ -19,6 +19,11 @@ const has = v => v !== null && v !== undefined && v !== '';
 const ST = { ativo: 'Ativo', prospeccao: 'Prospecção', inativo: 'Inativo', verificar: 'A verificar', fechou: 'Não existe mais' };
 const TIPOS = ['Tabacaria', 'Banca', 'Depósito / distribuidora', 'Mercado / conveniência', 'Bar / lanchonete', 'Barbearia', 'Outro'];
 const PAPEIS = { admin: 'Administradora', vendedor: 'Vendedor', leitura: 'Só leitura' };
+const DEFV = { a: 1, b: 15, c: 3, d: 1, niveis: [
+  { nome: 'Corre', min: 0, premio: 'Reconhecimento no grupo da equipe' },
+  { nome: 'Firme', min: 60, premio: 'Bônus de R$ 50' },
+  { nome: 'Brabo', min: 150, premio: 'Bônus de R$ 150' },
+  { nome: 'Lenda', min: 300, premio: 'Bônus de R$ 300 e destaque no Instagram da marca' }] };
 const DEF = { unidade: 'caixa', preco: 0, ciclo: 15, ptsCaixa: 10, ptsPontual: 5, ptsIndicacao: 30, janela: 90, niveis: [
   { nome: 'Pista', min: 0, premio: 'Preço de tabela e visita garantida no ciclo' },
   { nome: 'Bonde', min: 100, premio: 'Brinde em cada pedido (piteira, isqueiro ou bag)' },
@@ -27,8 +32,8 @@ const DEF = { unidade: 'caixa', preco: 0, ciclo: 15, ptsCaixa: 10, ptsPontual: 5
 
 /* ---------- estado ---------- */
 let app, auth, db, me = null, started = false, unsubs = [];
-let pdvs = new Map(), evs = [], peds = [], bons = [], cfg = clone(DEF), acessos = new Map(), M = new Map();
-let impTxt = '', pending = 0, cached = true, F = { q: '', st: '', cid: '', tipo: '', sort: 'nome' }, rcid = '', per = 90, skip = new Set(), undo = null, openId = null, installEvt = null, ip = 'mes', iv = 'eu';
+let pdvs = new Map(), evs = [], peds = [], bons = [], cfg = { ...clone(DEF), bv: clone(DEFV) }, acessos = new Map(), M = new Map();
+let impTxt = '', pending = 0, cached = true, F = { q: '', st: '', cid: '', tipo: '', sort: 'nome' }, rcid = '', per = 90, skip = new Set(), undo = null, openId = null, installEvt = null, ip = 'mes', iv = 'eu', tp = 'mes', colabOpen = null;
 const can = { write: () => me && me.papel !== 'leitura', admin: () => me && me.papel === 'admin' };
 
 /* ---------- inicialização ---------- */
@@ -92,7 +97,7 @@ function startData() {
     flatten(); net(); render();
   }, fail));
   unsubs.push(onSnapshot(collection(db, 'bonus'), s => { bons = s.docs.map(d => ({ ...d.data(), id: d.id })); render() }, fail));
-  unsubs.push(onSnapshot(doc(db, 'config', 'geral'), s => { cfg = s.exists() ? { ...clone(DEF), ...s.data() } : clone(DEF); if (!Array.isArray(cfg.niveis) || cfg.niveis.length !== 4) cfg.niveis = clone(DEF.niveis); render() }, fail));
+  unsubs.push(onSnapshot(doc(db, 'config', 'geral'), s => { cfg = s.exists() ? { ...clone(DEF), ...s.data() } : clone(DEF); if (!Array.isArray(cfg.niveis) || cfg.niveis.length !== 4) cfg.niveis = clone(DEF.niveis); cfg.bv = { ...clone(DEFV), ...(cfg.bv || {}) }; if (!Array.isArray(cfg.bv.niveis) || cfg.bv.niveis.length !== 4) cfg.bv.niveis = clone(DEFV.niveis); render() }, fail));
   if (can.admin()) unsubs.push(onSnapshot(collection(db, 'acessos'), s => { acessos = new Map(s.docs.map(d => [d.id, d.data()])); if (cur() === 'equipe') render() }, fail));
 }
 function flatten() { evs = []; for (const p of pdvs.values()) for (const e of (p.hist || [])) evs.push({ ...e, pdv: p.id }); peds = evs.filter(e => e.t !== 'v') }
@@ -315,6 +320,12 @@ function vAjustes() { const n = cfg.niveis, ad = can.admin();
   <label>Bônus por repor no prazo<input name="ptsPontual" type="number" min="0" value="${+cfg.ptsPontual}"></label>
   <label>Bônus por indicação<input name="ptsIndicacao" type="number" min="0" value="${+cfg.ptsIndicacao}"></label><span></span>
   ${n.map((t, i) => `<label>Nível ${i + 1}<input name="n${i}" value="${esc(t.nome)}" required></label><label>A partir de (pts)<input name="m${i}" type="number" min="0" value="${+t.min}" ${i ? '' : 'readonly'}></label><label class="w">Prêmio<input name="p${i}" value="${esc(t.premio)}"></label>`).join('')}
+  <h3 class="w" style="margin:18px 0 0">Bonificação da equipe (mensal)</h3><p class="pl w" style="margin:0">Pontos de cada vendedor no mês. Ajuste depois do primeiro mês, olhando quanto a equipe faz de verdade.</p>
+  <label>Pontos por ${esc(U())} vendida e paga<input name="bva" type="number" min="0" step="0.5" value="${+cfg.bv.a}"></label>
+  <label>Por ponto novo que fez pedido<input name="bvb" type="number" min="0" value="${+cfg.bv.b}"></label>
+  <label>Por prospecção cadastrada<input name="bvc" type="number" min="0" value="${+cfg.bv.c}"></label>
+  <label>Por visita registrada<input name="bvd" type="number" min="0" step="0.5" value="${+cfg.bv.d}"></label>
+  ${cfg.bv.niveis.map((t, i) => `<label>Nível ${i + 1} da equipe<input name="vn${i}" value="${esc(t.nome)}" required></label><label>A partir de (pts no mês)<input name="vm${i}" type="number" min="0" value="${+t.min}" ${i ? '' : 'readonly'}></label><label class="w">Prêmio<input name="vp${i}" value="${esc(t.premio)}"></label>`).join('')}
   ${ad ? '<div class="fa w"><button class="btn ink">Salvar ajustes</button></div>' : ''}</fieldset></form>
   ${ad ? `<h3>Dados da empresa (saem no comprovante e na nota)</h3>
   <form id="empF" class="f card" style="padding:20px">${[['razao', 'Razão social', 'w'], ['doc', 'CNPJ (ou CPF)'], ['ie', 'Inscrição estadual'], ['endereco', 'Endereço com número', 'w'], ['bairro', 'Bairro'], ['cidade', 'Cidade'], ['uf', 'UF'], ['cep', 'CEP'], ['tel', 'Telefone / WhatsApp'], ['email', 'E-mail'], ['pix', 'Chave PIX'], ['rodape', 'Texto do rodapé do comprovante', 'w']].map(([k, l, w]) => `<label class="${w || ''}">${l}<input name="${k}" value="${esc(emp()[k])}"></label>`).join('')}
@@ -331,7 +342,7 @@ function vMais() {
   return `<h2>Mais</h2><div class="menu">
   <a href="#ranking">Ranking <span>quem mais compra e vende</span></a>
   <a href="#triagem">Triagem <span>${[...pdvs.values()].filter(p => p.status === 'verificar').length} a verificar</span></a>
-  ${can.admin() ? `<a href="#notas">Notas fiscais <span>${peds.filter(o => o.nf && o.nf.st !== 'emitida').length} a emitir</span></a><a href="#equipe">Equipe <span>acessos dos vendedores</span></a>` : ''}
+  ${can.admin() ? `<a href="#notas">Notas fiscais <span>${peds.filter(o => o.nf && o.nf.st !== 'emitida').length} a emitir</span></a><a href="#time">Desempenho da equipe <span>ficha e bônus de cada colaborador</span></a><a href="#equipe">Equipe <span>acessos dos vendedores</span></a>` : ''}
   <a href="#ajustes">Ajustes e exportar <span>regras e planilhas</span></a>
   ${!standalone && installEvt ? '<button data-act="install">Instalar app no celular <span>Android</span></button>' : ''}
   <button data-act="logout">Sair <span>${esc(me?.email || '')}</span></button></div>
@@ -372,6 +383,8 @@ function vInicio() {
    <div class="met"><span class="num">${x.pro}</span><small>em prospecção</small></div>
    <div class="met"><span class="num">${x.v ? brl(x.v) : 'R$ 0'}</span><small>vendido${ip === 'tudo' ? '' : ' no período'}</small></div>
   </div>
+  ${eq ? '' : (() => { const bv = bonusV(me.email, ymDe('mes')), c = colab(me.email, 'mes');
+    return `<div class="bvcard"><div><span class="pl">Sua bonificação de ${esc(nomeMes(ymDe('mes')))}</span><div class="bvl">${tierV(bv.nv)}<b>${bv.pts} pts</b></div><div class="pl">${progV(bv)}</div></div><div class="bvp"><small>prêmio do nível</small><b>${esc(cfg.bv.niveis[bv.nv].premio)}</b>${bv.nx ? `<small>próximo: ${esc(bv.nx.premio)}</small>` : ''}</div>${c.rec ? `<div class="bvr ${c.venc ? 'venc' : ''}"><small>a receber dos seus pedidos</small><b>${brl(c.rec)}</b>${c.venc ? `<small>${brl(c.venc)} vencido</small>` : ''}</div>` : ''}</div>` })()}
   <div class="cols" style="margin-top:8px">
    <div class="rk"><h3>Ranking da equipe <span>${PER[ip]}</span></h3>${rl.length ? rl.slice(0, 8).map(([e, r], i) => `<div class="rr ${e === me.email ? 'me' : ''}" style="cursor:default"><i>${i + 1}</i><span class="n">${esc(nomeDe(e))}${e === me.email ? ' (você)' : ''}</span><span class="v">${nf(r.q)} ${esc(Us(r.q))} · ${r.c} novos</span><div class="tr"><div style="width:${r.q / mx * 100}%"></div></div></div>`).join('') : '<p class="pl">Ninguém registrou pedido nesse período ainda.</p>'}</div>
    <div class="rk"><h3>${eq ? 'Conquistas recentes' : 'Seus pontos'} <span>${x.con.length}</span></h3>${meus.length ? meus.map(p => `<div class="rr" data-act="open" data-id="${esc(p.id)}"><i>•</i><span class="n">${esc(p.nome)}</span><span class="v">${pill(p.status)}</span><span class="pl" style="grid-column:2/4">${esc(lugar(p))}${eq ? ' · ' + esc(nomeDe(conquistador(p))) : ''}</span></div>`).join('') + (x.con.length > 6 ? `<a class="lk" href="#pontos">Ver todos os pontos</a>` : '') : `<div class="empty" style="padding:16px">${eq ? 'Nenhum ponto tem vendedor definido ainda.' : 'Nenhum ponto no seu nome ainda. Cada ponto que você cadastrar ou fizer o primeiro pedido entra aqui.'}</div>`}
@@ -379,23 +392,84 @@ function vInicio() {
   </div>`;
   return h }
 
-const V = { inicio: vInicio, notas: vNotas, repor: vRepor, pontos: vPontos, ranking: vRanking, bonus: vBonus, triagem: vTriagem, equipe: vEquipe, ajustes: vAjustes, mais: vMais };
+/* ---------- desempenho de cada colaborador e bonificação da equipe ---------- */
+const MESES = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'];
+const ymDe = k => { const t = today(); if (k === 'ant') { const [y, m] = t.split('-').map(Number); return m === 1 ? `${y - 1}-12` : `${y}-${String(m - 1).padStart(2, '0')}` } return t.slice(0, 7) };
+const nomeMes = ym => MESES[+ym.slice(5, 7) - 1] + (ym.slice(0, 4) === today().slice(0, 4) ? '' : ' de ' + ym.slice(0, 4));
+function nivelV(pts) { let n = 0; cfg.bv.niveis.forEach((t, i) => { if (pts >= +t.min) n = i }); return n }
+function bonusV(email, ym) { const b = cfg.bv, no = d => (d || '').startsWith(ym);
+  const pg = peds.filter(o => o.por === email && no(o.d)), cx = pg.filter(o => o.pg !== 'receber').reduce((a, o) => a + (+o.q || 0), 0), pend = pg.filter(o => o.pg === 'receber').reduce((a, o) => a + (+o.q || 0), 0);
+  const vis = evs.filter(e => e.t === 'v' && e.por === email && no(e.d)).length;
+  const meus = [...pdvs.values()].filter(p => p.status !== 'fechou' && conquistador(p) === email && no(conqD(p)));
+  const novos = meus.filter(p => M.get(p.id)?.n).length, prosp = meus.length - novos;
+  const pts = Math.round(cx * (+b.a || 0) + novos * (+b.b || 0) + prosp * (+b.c || 0) + vis * (+b.d || 0)), nv = nivelV(pts), nx = b.niveis[nv + 1];
+  const pago = (cfg.pagBV || {})[ym + '|' + email] || null;
+  return { cx, pend, vis, novos, prosp, pts, nv, nx, falta: nx ? +nx.min - pts : 0, pago, ym } }
+const tierV = i => `<span class="tier ${i === 3 ? 't3' : ''}">${esc(cfg.bv.niveis[i]?.nome)}</span>`;
+const progV = r => { const b = r.nv ? +cfg.bv.niveis[r.nv].min : 0; return r.nx ? `<span class="prog"><div style="width:${Math.min(100, (r.pts - b) / (+r.nx.min - b) * 100).toFixed(0)}%"></div></span>faltam ${r.falta} pts pra ${esc(r.nx.nome)}` : 'Nível máximo do mês' };
+function colabs() { const s = new Set([me.email]); for (const [e, a] of acessos) if (a.papel !== 'leitura') s.add(e);
+  peds.forEach(o => o.por && s.add(o.por)); evs.forEach(o => o.por && s.add(o.por)); for (const p of pdvs.values()) { const c = conquistador(p); if (c) s.add(c) } return [...s] }
+function colab(email, k) { const de = k === 'mes' ? today().slice(0, 8) + '01' : k === 'ant' ? ymDe('ant') + '-01' : '0000-00-00', ate = k === 'ant' ? ymDe('ant') + '-31' : '9999';
+  const em = e => e.por === email && e.d >= de && e.d <= ate, ps = peds.filter(em), vs = evs.filter(e => em(e) && e.t === 'v'), t = today();
+  const rec = peds.filter(o => o.por === email && o.pg === 'receber'), venc = rec.filter(o => o.venc && o.venc < t);
+  const pts = [...pdvs.values()].filter(p => p.status !== 'fechou' && conquistador(p) === email), novos = pts.filter(p => conqD(p) >= de && conqD(p) <= ate);
+  const ult = evs.filter(e => e.por === email).sort((a, b) => byD(b, a))[0];
+  return { email, nome: nomeDe(email), papel: acessos.get(email)?.papel || (email === me.email ? me.papel : ''), ativoAc: acessos.get(email)?.ativo !== false,
+    q: ps.reduce((a, o) => a + (+o.q || 0), 0), n: ps.length, v: ps.reduce((a, o) => a + (+o.v || 0), 0), vis: vs.length, cli: new Set(ps.map(o => o.pdv)).size,
+    rec: rec.reduce((a, o) => a + (+o.v || 0), 0), recN: rec.length, venc: venc.reduce((a, o) => a + (+o.v || 0), 0), pts, novos, at: pts.filter(p => p.status === 'ativo').length,
+    nPed: peds.filter(o => o.por === email).length, ult } }
+function vTime() {
+  if (!can.admin()) return `<div class="empty">Só a administradora vê o desempenho da equipe.</div>`;
+  const PER = { mes: 'Este mês', ant: 'Mês passado', tudo: 'Desde o início' }, ym = tp === 'ant' ? ymDe('ant') : ymDe('mes');
+  const l = colabs().map(e => ({ ...colab(e, tp), b: bonusV(e, ym) })).filter(c => c.n || c.vis || c.pts.length || c.rec || acessos.has(c.email)).sort((a, b) => b.q - a.q || b.b.pts - a.b.pts);
+  const tot = l.reduce((a, c) => ({ q: a.q + c.q, v: a.v + c.v, rec: a.rec + c.rec, venc: a.venc + c.venc, nov: a.nov + c.novos.length }), { q: 0, v: 0, rec: 0, venc: 0, nov: 0 });
+  return `<h2>Desempenho da equipe</h2><p class="lead">Tudo que cada colaborador fez na rua: caixas vendidas, pedidos, visitas, pontos no nome dele, o que tem a receber e a bonificação de ${esc(nomeMes(ym))}. Toque numa pessoa para abrir a ficha completa.</p>
+  <div class="chips">${Object.entries(PER).map(([k, t]) => `<button class="chip ${tp === k ? 'on' : ''}" data-act="tp" data-v="${k}">${t}</button>`).join('')}</div>
+  <div class="mets t5" style="margin-bottom:16px"><div class="met"><span class="num">${nf(tot.q)}</span><small>${esc(U())}s vendidas pela equipe</small></div><div class="met"><span class="num">${brl(tot.v)}</span><small>vendido</small></div><div class="met"><span class="num">${tot.nov}</span><small>pontos conquistados</small></div><div class="met"><span class="num">${brl(tot.rec)}</span><small>a receber hoje</small>${tot.venc ? `<em style="color:var(--brick)">${brl(tot.venc)} vencido</em>` : ''}</div><div class="met"><span class="num">${l.filter(c => c.b.nv > 0).length}</span><small>bateram nível de bônus em ${esc(nomeMes(ym))}</small></div></div>
+  <div class="grid">${l.map(c => `<button class="card colab" data-act="colab" data-id="${esc(c.email)}">
+   <div class="ct"><div><b class="nm" style="cursor:pointer">${esc(c.nome)}</b><div class="pl">${esc(PAPEIS[c.papel] || 'Colaborador')}${c.ativoAc ? '' : ' · acesso desativado'}${c.ult ? ` · ativo ${rel(D(c.ult.d) - D(today()))}` : ' · sem registros'}</div></div><div class="due"><span class="num">${nf(c.q)}</span><small>${esc(Us(c.q))}</small></div></div>
+   <div class="meta"><span><b>${c.n}</b> pedidos</span><span><b>${c.vis}</b> visitas</span><span><b>${c.pts.length}</b> pontos dele${c.novos.length ? ` (+${c.novos.length})` : ''}</span><span><b>${brl(c.v)}</b></span></div>
+   ${c.rec ? `<div class="meta"><span style="color:${c.venc ? 'var(--brick)' : 'inherit'}">A receber <b style="color:inherit">${brl(c.rec)}</b>${c.venc ? ` · ${brl(c.venc)} vencido` : ''}</span></div>` : ''}
+   <div class="meta">${tierV(c.b.nv)}<span><b>${c.b.pts} pts</b> em ${esc(nomeMes(ym))}</span>${c.b.pago ? '<span class="pill p-ativo">bônus pago</span>' : ''}</div></button>`).join('')}</div>
+  <h3>Como a bonificação da equipe funciona <span>mensal · editável em Ajustes</span></h3>
+  <div class="tiers">${cfg.bv.niveis.map((t, i) => `<div class="tc ${i === 3 ? 'top3' : ''}"><span class="num">${esc(t.nome)}</span><span class="q">a partir de ${+t.min} pts</span><span>${esc(t.premio)}</span></div>`).join('')}</div>
+  <p class="pl">${+cfg.bv.a} pt por ${esc(U())} vendida e paga (a receber só conta depois de marcar pago) · ${+cfg.bv.b} pts por ponto novo no nome dele que fez pedido · ${+cfg.bv.c} pts por ponto em prospecção cadastrado · ${+cfg.bv.d} pt por visita registrada.</p>` }
+function colabDlg(email) { colabOpen = email; openId = null; const ym = tp === 'ant' ? ymDe('ant') : ymDe('mes'), c = colab(email, tp), b = bonusV(email, ym), t = today();
+  const rec = peds.filter(o => o.por === email && o.pg === 'receber').sort((a, b) => (a.venc || a.d) < (b.venc || b.d) ? -1 : 1);
+  const at = evs.filter(e => e.por === email).sort((a, b) => byD(b, a)).slice(0, 20);
+  const pts = c.pts.slice().sort((a, b) => (M.get(b.id)?.qtd || 0) - (M.get(a.id)?.qtd || 0));
+  const PER = { mes: 'este mês', ant: 'mês passado', tudo: 'desde o início' };
+  show(esc(c.nome), `<div class="pl">${esc(email)} · ${esc(PAPEIS[c.papel] || 'Colaborador')} · números de ${PER[tp]}</div>
+  <div class="stats"><div><span class="num">${nf(c.q)}</span><small>${esc(U())}s vendidas</small></div><div><span class="num">${c.n}</span><small>pedidos (${c.nPed} no total)</small></div><div><span class="num">${c.vis}</span><small>visitas</small></div><div><span class="num">${brl(c.v)}</span><small>vendido</small></div>
+  <div><span class="num">${c.pts.length}</span><small>pontos no nome dele</small></div><div><span class="num">${c.at}</span><small>desses ativos</small></div><div><span class="num">${c.novos.length}</span><small>conquistados ${PER[tp]}</small></div><div><span class="num" style="color:${c.venc ? 'var(--brick)' : 'inherit'}">${brl(c.rec)}</span><small>a receber${c.venc ? ` · ${brl(c.venc)} vencido` : ''}</small></div></div>
+  <h3>Bonificação de ${esc(nomeMes(ym))}</h3>
+  <div class="card"><div class="ct bvct"><div>${tierV(b.nv)} <b style="font-size:20px;margin-left:6px">${b.pts} pts</b><div class="pl" style="margin-top:6px">${progV(b)}</div></div><div class="due"><small>prêmio</small><b style="display:block;max-width:220px">${esc(cfg.bv.niveis[b.nv].premio)}</b></div></div>
+   <div class="meta"><span><b>${nf(b.cx)}</b> ${esc(Us(b.cx))} pagas × ${+cfg.bv.a}</span><span><b>${b.novos}</b> pontos novos × ${+cfg.bv.b}</span><span><b>${b.prosp}</b> prospecções × ${+cfg.bv.c}</span><span><b>${b.vis}</b> visitas × ${+cfg.bv.d}</span></div>
+   ${b.pend ? `<div class="flag">${nf(b.pend)} ${esc(Us(b.pend))} ainda a receber. Entram nos pontos quando marcar pago.</div>` : ''}
+   <div class="cb">${b.pago ? `<span class="pill p-ativo">Bônus pago em ${fd(b.pago.data)}${b.pago.valor ? ' · ' + esc(b.pago.valor) : ''}</span><button class="lk" data-adm data-act="bvDesfaz" data-id="${esc(email)}" data-v="${ym}">Desfazer</button>` : `<button class="btn sm ink" data-adm data-act="bvPago" data-id="${esc(email)}" data-v="${ym}">Registrar bônus de ${esc(nomeMes(ym))} como pago</button>`}</div></div>
+  <h3>A receber <span>${rec.length}</span></h3>${rec.length ? `<ul class="hist">${rec.map(o => { const p = pdvs.get(o.pdv), vc = o.venc && o.venc < t;
+    return `<li><span><b>${esc(p?.nome || 'Ponto removido')}</b> · ${brl(o.v)}<br><span class="pl">Pedido ${fd(o.d)}${o.venc ? ` · vence ${fd(o.venc)}` : ''}</span> ${vc ? '<span class="pill p-verificar">vencido</span>' : ''}</span><span><button class="lk" data-w data-act="pago" data-id="${esc(o.id)}" data-p="${esc(o.pdv)}">Marcar pago</button></span></li>` }).join('')}</ul>` : '<p class="pl">Nada a receber.</p>'}
+  <h3>Estabelecimentos dele <span>${pts.length}</span></h3>${pts.length ? `<ul class="hist">${pts.map(p => { const s = M.get(p.id);
+    return `<li><span><button class="nm" style="font-size:15px" data-act="open" data-id="${esc(p.id)}">${esc(p.nome)}</button><br><span class="pl">${esc(lugar(p))}${s?.last ? ` · último pedido ${fd(s.last.d)}` : ''}${s?.qtd ? ` · ${nf(s.qtd)} ${esc(Us(s.qtd))} no total` : ''}</span></span><span>${pill(p.status)}</span></li>` }).join('')}</ul>` : '<p class="pl">Nenhum ponto no nome dele. Defina em cada ponto, no campo "Conquistado por".</p>'}
+  <h3>Atividade recente</h3>${at.length ? `<ul class="hist">${at.map(e => `<li><span><b>${fd(e.d)}</b> · ${esc(pdvs.get(e.pdv)?.nome || 'Ponto removido')}<br><span class="pl">${e.t === 'v' ? 'Visita' : `Pedido de ${nf(e.q)} ${esc(Us(+e.q))}${+e.v ? ' · ' + brl(e.v) : ''}${e.pg === 'receber' ? ' · a receber' : ''}`}${has(e.s) ? ` · sobra ${nf(e.s)}` : ''}</span></span></li>`).join('')}</ul>` : '<p class="pl">Nenhum registro ainda.</p>'}`) }
+
+const V = { inicio: vInicio, time: vTime, notas: vNotas, repor: vRepor, pontos: vPontos, ranking: vRanking, bonus: vBonus, triagem: vTriagem, equipe: vEquipe, ajustes: vAjustes, mais: vMais };
 const cur = () => { const h = location.hash.slice(1); return V[h] ? h : 'inicio' };
 function render() {
   if (!me || $('#app').hidden) return; derive(); kpis(); const v = cur(); document.body.classList.toggle('v-inicio', v === 'inicio'); if (v === 'inicio' && !render.f) { render.f = 1; document.body.classList.add('first'); setTimeout(() => document.body.classList.remove('first'), 700) }
-  const sub = ['ranking', 'triagem', 'equipe', 'ajustes', 'mais', 'notas'].includes(v);
+  const sub = ['ranking', 'triagem', 'equipe', 'ajustes', 'mais', 'notas', 'time'].includes(v);
   document.querySelectorAll('#tabs a').forEach(a => { const h = a.getAttribute('href'); a.classList.toggle('on', h === '#' + v || (sub && h === '#mais')) });
   const ae = document.activeElement, id = ae?.id, pos = ae?.selectionStart;
   $('#view').innerHTML = V[v]();
   if (id && $('#view #' + id)) { const e = $('#' + id); e.focus(); try { if (pos != null) e.setSelectionRange(pos, pos) } catch { } }
-  if ($('#dlg').open && openId && pdvs.has(openId)) detail(openId);
+  if ($('#dlg').open && openId && pdvs.has(openId)) detail(openId); else if ($('#dlg').open && colabOpen) colabDlg(colabOpen);
 }
 
 /* ---------- janelas ---------- */
 const dlg = $('#dlg');
 function show(title, body) { $('#dlgIn').innerHTML = `<div class="dh"><h2>${title}</h2><button class="x" data-act="close" aria-label="Fechar">×</button></div><div class="db">${body}</div>`; if (!dlg.open) dlg.showModal() }
-dlg.addEventListener('close', () => { openId = null; if (location.hash === '#novo') history.replaceState(null, '', '#inicio') });
-function detail(id) { const p = pdvs.get(id); if (!p) return; openId = id; const s = M.get(id);
+dlg.addEventListener('close', () => { openId = null; colabOpen = null; if (location.hash === '#novo') history.replaceState(null, '', '#inicio') });
+function detail(id) { const p = pdvs.get(id); if (!p) return; openId = id; colabOpen = null; const s = M.get(id);
   show(esc(p.nome), `<div class="pl">${esc(lugar(p))}${p.endereco ? ' · ' + esc(p.endereco) : ''}</div>
   <div class="cb" style="margin:10px 0">${pill(p.status)} ${s.n ? tier(s.nivel) + ` <span class="pl">${s.pts} pts</span>` : ''} ${p.contato ? `<span class="pill">${esc(p.contato)}</span>` : ''}</div>
   <div class="cb"><button class="btn sm ink" data-w data-act="newPed" data-id="${esc(id)}">Registrar</button><button class="btn sm line" data-w data-act="edit" data-id="${esc(id)}">Editar</button>${wa(p)}${mapa(p)}</div>
@@ -556,7 +630,9 @@ const stripId = p => { const { id, ...r } = p; return r };
 document.addEventListener('submit', async e => {
   const f = e.target; if (f.id === 'loginF') return; e.preventDefault(); const v = Object.fromEntries(new FormData(f));
   if (f.id === 'cfgF') { const c = { ...cfg, unidade: v.unidade.trim() || 'caixa', preco: +v.preco || 0, ciclo: +v.ciclo || 15, janela: +v.janela || 90, ptsCaixa: +v.ptsCaixa || 0, ptsPontual: +v.ptsPontual || 0, ptsIndicacao: +v.ptsIndicacao || 0,
-      niveis: cfg.niveis.map((_, i) => ({ nome: v['n' + i].trim(), min: i ? +v['m' + i] || 0 : 0, premio: v['p' + i].trim() })) };
+      niveis: cfg.niveis.map((_, i) => ({ nome: v['n' + i].trim(), min: i ? +v['m' + i] || 0 : 0, premio: v['p' + i].trim() })),
+      bv: { a: +v.bva || 0, b: +v.bvb || 0, c: +v.bvc || 0, d: +v.bvd || 0, niveis: cfg.bv.niveis.map((_, i) => ({ nome: v['vn' + i].trim(), min: i ? +v['vm' + i] || 0 : 0, premio: v['vp' + i].trim() })) } };
+    for (let i = 1; i < 4; i++) if (c.bv.niveis[i].min <= c.bv.niveis[i - 1].min) return toast('Na bonificação da equipe, cada nível precisa de mais pontos que o anterior.');
     for (let i = 1; i < 4; i++) if (c.niveis[i].min <= c.niveis[i - 1].min) return toast('Cada nível precisa de mais pontos que o anterior.');
     return fire(setDoc(doc(db, 'config', 'geral'), c), 'Ajustes salvos') }
   if (f.id === 'teamF') return addMember(v, f);
@@ -616,6 +692,10 @@ document.addEventListener('click', e => {
   if (act === 'per') { per = +v; return render() }
   if (act === 'rcid') { rcid = v; return render() }
   if (act === 'ip') { ip = v; return render() }
+  if (act === 'tp') { tp = v; return render() }
+  if (act === 'colab') return colabDlg(id);
+  if (act === 'bvPago' && can.admin()) { const val = prompt('Valor ou prêmio entregue (opcional):', cfg.bv.niveis[bonusV(id, v).nv].premio) ; if (val === null) return; const m = { ...(cfg.pagBV || {}), [v + '|' + id]: { data: today(), valor: val.trim(), por: me.email, pts: bonusV(id, v).pts } }; return fire(setDoc(doc(db, 'config', 'geral'), { ...cfg, pagBV: m }), 'Bônus registrado como pago') }
+  if (act === 'bvDesfaz' && can.admin()) { const m = { ...(cfg.pagBV || {}) }; delete m[v + '|' + id]; return fire(setDoc(doc(db, 'config', 'geral'), { ...cfg, pagBV: m }), 'Registro de bônus desfeito') }
   if (act === 'iv') { iv = v; return render() }
   if (act === 'skip') { skip.add(id); return render() }
   if (act === 'unskip') { skip.clear(); return render() }
