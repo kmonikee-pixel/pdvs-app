@@ -374,7 +374,7 @@ function vInicio() {
   let h = `<section class="capa"><div class="capa-t"><span class="pl">${oi}${eq ? '' : ','}</span><h2>${eq ? 'Números da equipe' : esc(pn || 'vendedor')}</h2>
    <p class="pl">${eq ? 'Tudo que a equipe vendeu e conquistou.' : pos >= 0 && rl.length > 1 ? `Você está em <b>${pos + 1}º</b> no ranking da equipe (${PER[ip].toLowerCase()}).` : 'Seus números na rua, atualizados a cada registro.'}</p></div>
    <div class="cta"><button class="btn mega" data-w data-act="newPdv"><span class="plus">+</span><span>Cadastrar novo PDV<small>ponto conquistado ou em prospecção</small></span></button>
-   <button class="btn mega2" data-w data-act="newPed">Registrar pedido ou visita</button></div></section>
+   <button class="btn mega2" data-w data-act="newPed">Registrar pedido ou visita</button>${can.admin() ? '<a class="btn mega2" href="#time">Desempenho da equipe</a>' : ''}</div></section>
   <div class="chips">${can.admin() ? `<button class="chip ${!eq ? 'on' : ''}" data-act="iv" data-v="eu">Meus números</button><button class="chip ${eq ? 'on' : ''}" data-act="iv" data-v="eq">Equipe toda</button><span class="sep"></span>` : ''}${Object.entries(PER).map(([k, t]) => `<button class="chip ${ip === k ? 'on' : ''}" data-act="ip" data-v="${k}">${t}</button>`).join('')}</div>
   <div class="mets">
    <div class="met big"><span class="num">${nf(x.q)}</span><small>${esc(Us(x.q))} de seda vendidas</small><em>${x.n} ${x.n === 1 ? 'pedido' : 'pedidos'} em ${x.pts} ${x.pts === 1 ? 'ponto' : 'pontos'}</em></div>
