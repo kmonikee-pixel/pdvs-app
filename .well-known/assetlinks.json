@@ -1,0 +1,8 @@
+[{
+      "relation": ["delegate_permission/common.handle_all_urls"],
+      "target": {
+        "namespace": "android_app",
+        "package_name": "br.com.sedadefavela.pdvs",
+        "sha256_cert_fingerprints": ["77:83:7D:E9:47:5F:35:0E:A0:86:C3:74:B4:AC:EC:A6:1F:17:6B:B8:7D:44:9D:8E:53:D7:77:6B:28:90:C0:ED"]
+      }
+    }]
