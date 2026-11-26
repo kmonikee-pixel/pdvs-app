@@ -1,0 +1,44 @@
+rules_version = '2';
+// Regras de acesso do app PDVs Seda de Favela.
+// Ninguém lê nem grava sem login. A lista de quem pode entrar fica em /acessos/{email}.
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function logado() { return request.auth != null && request.auth.token.email != null; }
+    function email() { return request.auth.token.email.lower(); }
+    function raiz() { return logado() && email() == 'sedadefavela@gmail.com'; }
+    function acesso() { return get(/databases/$(database)/documents/acessos/$(email())).data; }
+    function temAcesso() { return logado() && exists(/databases/$(database)/documents/acessos/$(email())) && acesso().ativo == true; }
+    function ativo() { return raiz() || temAcesso(); }
+    function admin() { return raiz() || (temAcesso() && acesso().papel == 'admin'); }
+    function vendedor() { return admin() || (temAcesso() && acesso().papel == 'vendedor'); }
+
+    // equipe: cada um lê o próprio acesso; só a administradora vê e muda a lista
+    match /acessos/{e} {
+      allow read: if raiz() || (logado() && e == email()) || admin();
+      allow write: if admin();
+    }
+
+    // pontos de venda (o histórico de pedidos e visitas fica dentro de cada ponto)
+    match /pdvs/{id} {
+      allow read: if ativo();
+      allow create, update: if vendedor();
+      allow delete: if admin();
+    }
+
+    match /bonus/{id} {
+      allow read: if ativo();
+      allow write: if admin();
+    }
+
+    match /config/{id} {
+      allow read: if ativo();
+      allow write: if admin();
+    }
+
+    // qualquer outra coisa: fechado
+    match /{doc=**} {
+      allow read, write: if false;
+    }
+  }
+}
