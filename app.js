@@ -139,6 +139,22 @@ function derive() {
     M.set(p.id, s);
   }
 }
+const FP = ['PIX', 'Dinheiro', 'Cartão', 'Boleto', 'A prazo'];
+const brD = s => s ? s.slice(8, 10) + '/' + s.slice(5, 7) + '/' + s.slice(0, 4) : '';
+const emp = () => cfg.empresa || {};
+function produtos() { const l = Array.isArray(cfg.produtos) && cfg.produtos.length ? cfg.produtos : [{ c: 'SDF-CX', d: 'Seda de Favela (caixa)', un: 'CX', p: +cfg.preco || 0, ncm: '4813.10.00', f: 1 }]; return l }
+const prodDe = c => produtos().find(x => x.c === c);
+function itensDe(o) { if (Array.isArray(o.it) && o.it.length) return o.it; if (o.t === 'v' || !+o.q) return []; const p0 = produtos()[0]; return [{ c: p0.c, d: p0.d, un: p0.un, ncm: p0.ncm, q: +o.q, pu: +o.q ? (+o.v || 0) / +o.q : 0 }] }
+const subtotal = o => itensDe(o).reduce((a, i) => a + (+i.q || 0) * (+i.pu || 0), 0);
+function numPedido(d) {
+  const ini = (me.nome || me.email).normalize('NFD').replace(/[^A-Za-z]/g, '').slice(0, 3).toUpperCase() || 'VEN';
+  const pre = `SDF-${d.slice(2, 4)}${d.slice(5, 7)}${d.slice(8, 10)}-${ini}-`;
+  const n = evs.filter(e => (e.n || '').startsWith(pre)).length + 1;
+  return pre + String(n).padStart(2, '0') }
+function faltaNF(p) { const e = emp(), f = [];
+  if (!p.doc) f.push('CPF/CNPJ do cliente'); if (!p.endereco) f.push('endereço do cliente'); if (!p.cep) f.push('CEP do cliente'); if (!p.cidade || !p.uf) f.push('cidade/UF do cliente');
+  if (!e.doc) f.push('CNPJ da empresa (Ajustes)'); if (!e.ie) f.push('inscrição estadual da empresa (Ajustes)');
+  return f }
 const qtdEm = (id, dias) => { const t = D(today()); return (M.get(id)?.ps || []).filter(o => dias === 0 || t - D(o.d) < dias).reduce((a, o) => a + (+o.q || 0), 0) };
 const lugar = p => [p.bairro, p.cidade && (p.cidade + (p.uf ? '/' + p.uf : ''))].filter(Boolean).join(' · ') || 'Sem local';
 const pill = st => `<span class="pill p-${esc(st)}">${esc(ST[st] || st)}</span>`;
@@ -263,6 +279,27 @@ function vEquipe() {
    <td>${a.ativo ? '<span class="pill p-ativo">Ativo</span>' : '<span class="pill p-inativo">Desativado</span>'}</td><td class="r">${cnt.get(em) || 0}</td>
    <td>${em === me.email ? '' : `<button class="lk" data-act="ativo" data-id="${esc(em)}">${a.ativo ? 'Desativar' : 'Reativar'}</button>`}<button class="lk" data-act="reset" data-id="${esc(em)}">Link de nova senha</button></td></tr>`).join('')}</tbody></table>` : '<div class="empty">Ninguém além de você ainda.</div>'}` }
 
+function vNotas() {
+  if (!can.admin()) return '<div class="empty">Só a administradora controla as notas.</div>';
+  const l = peds.filter(o => o.nf).sort((a, b) => a.d < b.d ? 1 : -1), pend = l.filter(o => o.nf.st !== 'emitida'), emi = l.filter(o => o.nf.st === 'emitida');
+  const row = o => { const p = pdvs.get(o.pdv) || {}, fl = o.nf.st !== 'emitida' ? faltaNF(p) : [];
+    return `<tr><td><b>${esc(o.n || '')}</b><div class="pl">${brD(o.d)} · ${esc(o.pn || '')}</div></td><td>${esc(p.razao || p.nome || 'Ponto removido')}<div class="pl">${esc(p.doc || 'sem CPF/CNPJ')}</div></td><td class="r">${brl(o.v)}</td>
+    <td>${o.nf.st === 'emitida' ? `<span class="pill p-ativo">Nº ${esc(o.nf.num)}</span>` : fl.length ? `<span class="pill p-verificar" title="${esc(fl.join(', '))}">falta ${fl.length} dado${fl.length > 1 ? 's' : ''}</span>` : '<span class="pill p-prospeccao">pronta pra emitir</span>'}</td>
+    <td><button class="lk" data-act="rec" data-p="${esc(o.pdv)}" data-id="${esc(o.id)}">Comprovante</button>${o.nf.st !== 'emitida' ? `<button class="lk" data-act="nfOk" data-p="${esc(o.pdv)}" data-id="${esc(o.id)}">Marcar emitida</button>` : ''}</td></tr>` };
+  const e = emp(), fe = [!e.doc && 'CNPJ', !e.ie && 'inscrição estadual'].filter(Boolean);
+  return `<h2>Notas fiscais</h2><p class="lead">Cada pedido nasce aqui como <b>a emitir</b>. Emita a NF-e no emissor da empresa (ou mande a planilha para a contabilidade) e marque como emitida com o número. Assim nenhuma venda fica sem nota.</p>
+  ${fe.length ? `<div class="flag" style="margin-bottom:14px">Os dados da empresa estão incompletos (${fe.join(' e ')}). Preencha em <a href="#ajustes">Ajustes</a>.</div>` : ''}
+  <div class="cb" style="margin-bottom:14px"><button class="btn ink" data-act="csvNF">Baixar pendentes para o emissor (.csv)</button></div>
+  <h3>A emitir <span>${pend.length}</span></h3>${pend.length ? `<table class="stack"><thead><tr><th>Pedido</th><th>Cliente</th><th class="r">Total</th><th>Situação</th><th></th></tr></thead><tbody>${pend.map(row).join('')}</tbody></table>` : '<div class="empty">Nenhuma nota pendente.</div>'}
+  <h3>Emitidas <span>${emi.length}</span></h3>${emi.length ? `<table class="stack"><thead><tr><th>Pedido</th><th>Cliente</th><th class="r">Total</th><th>NF-e</th><th></th></tr></thead><tbody>${emi.slice(0, 50).map(row).join('')}</tbody></table>` : '<div class="empty">Nenhuma ainda.</div>'}` }
+function nfForm(pid, oid) { openId = null;
+  show('Marcar NF-e como emitida', `<form class="f" data-form="nf" data-p="${esc(pid)}" data-id="${esc(oid)}"><label>Número da NF-e<input name="num" required inputmode="numeric"></label><label>Data de emissão<input name="data" type="date" value="${today()}"></label><label class="w">Chave de acesso (opcional)<input name="chave" inputmode="numeric" maxlength="54"></label><div class="fa w"><button type="button" class="btn line" data-act="close">Cancelar</button><button class="btn ink">Salvar</button></div></form>`) }
+function csvNF() { const q = x => `"${String(x ?? '').replace(/"/g, '""')}"`, e = emp();
+  const rows = [['Pedido', 'Data', 'Cliente (razão social)', 'Nome do ponto', 'CPF/CNPJ', 'IE', 'Endereço', 'Bairro', 'Cidade', 'UF', 'CEP', 'Telefone', 'E-mail', 'Código', 'Produto', 'NCM', 'Unidade', 'Quantidade', 'Valor unitário', 'Valor do item', 'Desconto do pedido', 'Total do pedido', 'Forma de pagamento', 'Situação', 'Vencimento', 'Vendedor', 'Faltam dados']];
+  for (const o of peds.filter(o => o.nf && o.nf.st !== 'emitida').sort(byD)) { const p = pdvs.get(o.pdv) || {};
+    for (const i of itensDe(o)) rows.push([o.n, brD(o.d), p.razao || p.nome, p.nome, p.doc, p.ie, p.endereco, p.bairro, p.cidade, p.uf, p.cep, p.contato, p.email, i.c, i.d, i.ncm, i.un, i.q, (+i.pu).toFixed(2).replace('.', ','), (i.q * i.pu).toFixed(2).replace('.', ','), (+o.ds || 0).toFixed(2).replace('.', ','), (+o.v).toFixed(2).replace('.', ','), o.fp, o.pg === 'receber' ? 'A receber' : 'Pago', brD(o.venc), o.pn, faltaNF(p).join(', ')]) }
+  download(`notas-a-emitir-${today()}.csv`, rows.map(r => r.map(q).join(';')).join('\n')) }
+
 function vAjustes() { const n = cfg.niveis, ad = can.admin();
   return `<h2>Ajustes</h2><p class="lead">${ad ? 'Valem para toda a equipe.' : 'Só a administradora altera as regras.'}</p>
   <form id="cfgF" class="f card" style="padding:20px"><fieldset ${ad ? '' : 'disabled'} style="display:contents">
@@ -275,6 +312,13 @@ function vAjustes() { const n = cfg.niveis, ad = can.admin();
   <label>Bônus por indicação<input name="ptsIndicacao" type="number" min="0" value="${+cfg.ptsIndicacao}"></label><span></span>
   ${n.map((t, i) => `<label>Nível ${i + 1}<input name="n${i}" value="${esc(t.nome)}" required></label><label>A partir de (pts)<input name="m${i}" type="number" min="0" value="${+t.min}" ${i ? '' : 'readonly'}></label><label class="w">Prêmio<input name="p${i}" value="${esc(t.premio)}"></label>`).join('')}
   ${ad ? '<div class="fa w"><button class="btn ink">Salvar ajustes</button></div>' : ''}</fieldset></form>
+  ${ad ? `<h3>Dados da empresa (saem no comprovante e na nota)</h3>
+  <form id="empF" class="f card" style="padding:20px">${[['razao', 'Razão social', 'w'], ['doc', 'CNPJ (ou CPF)'], ['ie', 'Inscrição estadual'], ['endereco', 'Endereço com número', 'w'], ['bairro', 'Bairro'], ['cidade', 'Cidade'], ['uf', 'UF'], ['cep', 'CEP'], ['tel', 'Telefone / WhatsApp'], ['email', 'E-mail'], ['pix', 'Chave PIX'], ['rodape', 'Texto do rodapé do comprovante', 'w']].map(([k, l, w]) => `<label class="${w || ''}">${l}<input name="${k}" value="${esc(emp()[k])}"></label>`).join('')}
+  <label class="w" style="flex-direction:row;gap:10px;align-items:center"><input type="checkbox" name="controlaNF" ${cfg.controlaNF === false ? '' : 'checked'} style="width:22px;min-height:22px"> Controlar emissão de NF-e em cada pedido</label>
+  <div class="fa w"><button class="btn ink">Salvar dados da empresa</button></div></form>
+  <h3>Produtos</h3><p class="lead">O que aparece para escolher no pedido. "Conta como" diz quantas ${esc(U())}s cada unidade vale no giro e no bônus (0 para brindes e acessórios). Confirme NCM e tributação com a contabilidade.</p>
+  <form id="prodF" class="card" style="padding:16px"><table class="stack"><thead><tr><th>Código</th><th>Descrição</th><th>Unid.</th><th>Preço R$</th><th>NCM</th><th>Conta como</th><th></th></tr></thead><tbody>${produtos().map((p, k) => `<tr><td><input name="c${k}" value="${esc(p.c)}" required></td><td><input name="d${k}" value="${esc(p.d)}" required></td><td><input name="un${k}" value="${esc(p.un)}" style="max-width:80px"></td><td><input name="p${k}" type="number" step="0.01" min="0" value="${+p.p || 0}" style="max-width:110px"></td><td><input name="ncm${k}" value="${esc(p.ncm)}" style="max-width:130px"></td><td><input name="f${k}" type="number" step="0.01" min="0" value="${p.f ?? 1}" style="max-width:90px"></td><td>${produtos().length > 1 ? `<button type="button" class="lk" data-act="prodDel" data-id="${k}">Remover</button>` : ''}</td></tr>`).join('')}</tbody></table>
+  <div class="fa"><button type="button" class="btn line" data-act="prodAdd">+ Produto</button><button class="btn ink">Salvar produtos</button></div></form>` : ''}
   <h3>Exportar</h3><div class="cb"><button class="btn line" data-act="csv" data-v="pdv">Baixar pontos (.csv)</button><button class="btn line" data-act="csv" data-v="ped">Baixar pedidos e visitas (.csv)</button></div>
   ${ad ? `<h3>Importar do painel antigo</h3><p class="lead">Use uma vez, com internet, com o arquivo pdvs-importacao.json. Pontos que já existem recebem só o histórico que faltar; nada é apagado.</p><label class="btn line" style="width:fit-content">Escolher arquivo<input type="file" id="impF" accept=".json,application/json" hidden></label><p class="pl" id="impMsg">${esc(impTxt)}</p>` : ''}` }
 
@@ -283,18 +327,18 @@ function vMais() {
   return `<h2>Mais</h2><div class="menu">
   <a href="#ranking">Ranking <span>quem mais compra e vende</span></a>
   <a href="#triagem">Triagem <span>${[...pdvs.values()].filter(p => p.status === 'verificar').length} a verificar</span></a>
-  ${can.admin() ? '<a href="#equipe">Equipe <span>acessos dos vendedores</span></a>' : ''}
+  ${can.admin() ? `<a href="#notas">Notas fiscais <span>${peds.filter(o => o.nf && o.nf.st !== 'emitida').length} a emitir</span></a><a href="#equipe">Equipe <span>acessos dos vendedores</span></a>` : ''}
   <a href="#ajustes">Ajustes e exportar <span>regras e planilhas</span></a>
   ${!standalone && installEvt ? '<button data-act="install">Instalar app no celular <span>Android</span></button>' : ''}
   <button data-act="logout">Sair <span>${esc(me?.email || '')}</span></button></div>
   ${!standalone && ios ? `<div class="card" style="margin-top:16px;max-width:520px"><b>Instalar no iPhone</b><ol class="steps"><li>Abra este endereço no <b>Safari</b>.</li><li>Toque em <b>Compartilhar</b> (quadrado com seta pra cima).</li><li>Escolha <b>Adicionar à Tela de Início</b> e confirme.</li></ol></div>` : ''}
   <p class="pl" style="margin-top:18px">PDVs Seda de Favela · ${esc(PAPEIS[me?.papel] || '')}${navigator.onLine ? '' : ' · sem internet'}</p>` }
 
-const V = { repor: vRepor, pontos: vPontos, ranking: vRanking, bonus: vBonus, triagem: vTriagem, equipe: vEquipe, ajustes: vAjustes, mais: vMais };
+const V = { notas: vNotas, repor: vRepor, pontos: vPontos, ranking: vRanking, bonus: vBonus, triagem: vTriagem, equipe: vEquipe, ajustes: vAjustes, mais: vMais };
 const cur = () => { const h = location.hash.slice(1); return V[h] ? h : 'repor' };
 function render() {
   if (!me || $('#app').hidden) return; derive(); kpis(); const v = cur();
-  const sub = ['ranking', 'triagem', 'equipe', 'ajustes', 'mais'].includes(v);
+  const sub = ['ranking', 'triagem', 'equipe', 'ajustes', 'mais', 'notas'].includes(v);
   document.querySelectorAll('#tabs a').forEach(a => { const h = a.getAttribute('href'); a.classList.toggle('on', h === '#' + v || (sub && h === '#mais')) });
   const ae = document.activeElement, id = ae?.id, pos = ae?.selectionStart;
   $('#view').innerHTML = V[v]();
@@ -317,7 +361,7 @@ function detail(id) { const p = pdvs.get(id); if (!p) return; openId = id; const
   ${p.redes ? `<p>Redes: ${esc(p.redes)}</p>` : ''}${p.doc ? `<p>CPF/CNPJ: ${esc(p.doc)}</p>` : ''}${p.obs ? `<p>${esc(p.obs)}</p>` : ''}
   <h3>Histórico</h3>${s.ev.length ? `<ul class="hist">${[...s.ev].reverse().map(o => { const mine = o.por === me.email || can.admin();
     return `<li><span><b>${fd(o.d)}/${o.d.slice(2, 4)}</b> · ${o.t === 'v' ? 'Visita' : `${nf(o.q)} ${esc(Us(+o.q))}${+o.v ? ' · ' + brl(o.v) : ''}`}${has(o.s) ? ` · sobra ${nf(o.s)}` : ''}${o.pn ? ` · <span class="pl">${esc(o.pn)}</span>` : ''}${o.o ? `<br><span class="pl">${esc(o.o)}</span>` : ''}</span>
-    <span>${o.t !== 'v' ? (o.pg === 'receber' ? `<button class="lk" data-w data-act="pago" data-id="${esc(o.id)}" data-p="${esc(id)}">Marcar pago</button>` : '<span class="pl">pago</span>') : ''}${mine && can.write() ? `<button class="lk" data-act="editPed" data-id="${esc(o.id)}" data-p="${esc(id)}">Editar</button><button class="lk" data-act="delPed" data-id="${esc(o.id)}" data-p="${esc(id)}">Apagar</button>` : ''}</span></li>` }).join('')}</ul>` : '<p class="pl">Nenhum registro ainda.</p>'}`) }
+    <span>${o.t !== 'v' ? `<button class="lk" data-act="rec" data-p="${esc(id)}" data-id="${esc(o.id)}">Comprovante</button>${o.nf ? `<span class="pill ${o.nf.st === 'emitida' ? 'p-ativo' : 'p-prospeccao'}">NF ${o.nf.st === 'emitida' ? 'emitida' : 'a emitir'}</span> ` : ''}` : ''}${o.t !== 'v' ? (o.pg === 'receber' ? `<button class="lk" data-w data-act="pago" data-id="${esc(o.id)}" data-p="${esc(id)}">Marcar pago</button>` : '<span class="pl">pago</span>') : ''}${mine && can.write() ? `<button class="lk" data-act="editPed" data-id="${esc(o.id)}" data-p="${esc(id)}">Editar</button><button class="lk" data-act="delPed" data-id="${esc(o.id)}" data-p="${esc(id)}">Apagar</button>` : ''}</span></li>` }).join('')}</ul>` : '<p class="pl">Nenhum registro ainda.</p>'}`) }
 
 function pdvForm(id) { const p = id ? pdvs.get(id) : { status: 'prospeccao', tipo: 'Tabacaria' }; openId = null;
   const o = (v, t, c) => `<option value="${esc(v)}" ${c === v ? 'selected' : ''}>${esc(t)}</option>`, ind = p.indicadoPor && pdvs.get(p.indicadoPor);
@@ -331,7 +375,11 @@ function pdvForm(id) { const p = id ? pdvs.get(id) : { status: 'prospeccao', tip
   <label>UF<input name="uf" maxlength="2" value="${esc(p.uf)}"></label>
   <label class="w">Endereço<input name="endereco" value="${esc(p.endereco)}"></label>
   <label>Instagram / redes<input name="redes" value="${esc(p.redes)}"></label>
-  <label>CPF / CNPJ<input name="doc" value="${esc(p.doc)}"></label>
+  <label>CPF / CNPJ<input name="doc" inputmode="numeric" value="${esc(p.doc)}"><small>Obrigatório para nota fiscal</small></label>
+  <label class="w">Razão social / nome completo<input name="razao" value="${esc(p.razao)}"><small>Como vai sair na nota. Vazio: usa o nome do ponto</small></label>
+  <label>Inscrição estadual<input name="ie" value="${esc(p.ie)}" placeholder="Isento, se não tiver"></label>
+  <label>CEP<input name="cep" inputmode="numeric" value="${esc(p.cep)}"></label>
+  <label>E-mail<input name="email" type="email" value="${esc(p.email)}"></label>
   <label>Ciclo fixo de reposição (dias)<input name="ciclo" type="number" inputmode="numeric" min="1" value="${esc(p.ciclo || '')}"><small>Vazio: o app calcula</small></label>
   <label>Retornar na prospecção em<input name="proxContato" type="date" value="${esc(p.proxContato || '')}"></label>
   <label class="w">Indicado por<input name="ind" list="pdvList" value="${esc(ind ? lbl(ind) : '')}" autocomplete="off"><small>Outro ponto que indicou este. Gera bônus pra quem indicou.</small></label>
@@ -348,19 +396,40 @@ function pedForm(pid, oid, ppid) {
   show(oid ? 'Editar registro' : 'Registrar', `<form class="f" data-form="ped" data-id="${esc(oid || '')}">
   <div class="w seg" role="group"><button type="button" data-t="p">Pedido</button><button type="button" data-t="v">Só visita</button></div>
   <div class="w" id="pdvBox"></div>
-  <label class="tp">Quantidade (${esc(U())}s)<div class="step"><button type="button" data-inc="q" data-d="-1">−</button><input name="q" type="number" inputmode="decimal" min="0" step="0.5" value="${esc(o.q ?? '')}" placeholder="0"><button type="button" data-inc="q" data-d="1">+</button></div></label>
+  <div class="w tp"><b style="font-size:14px">Produtos</b><div id="itBox"></div></div>
   <label>Sobra encontrada no ponto<div class="step"><button type="button" data-inc="s" data-d="-1">−</button><input name="s" type="number" inputmode="decimal" min="0" step="0.5" value="${esc(o.s ?? '')}" placeholder="não contei"><button type="button" data-inc="s" data-d="1">+</button></div><small>Quantas ${esc(U())}s ainda tinham lá. Mede o giro.</small></label>
-  <label class="tp">Valor (R$)<input name="v" type="number" min="0" step="0.01" inputmode="decimal" value="${esc(o.v ?? '')}"><small>${+cfg.preco ? 'Calculado pelo preço; pode mudar' : 'Defina o preço em Ajustes para calcular sozinho'}</small></label>
+  <label class="tp">Desconto (R$)<input name="ds" type="number" min="0" step="0.01" inputmode="decimal" value="${esc(o.ds || '')}" placeholder="0,00"></label>
+  <label class="tp">Forma de pagamento<select name="fp">${FP.map(x => `<option ${(o.fp || 'PIX') === x ? 'selected' : ''}>${x}</option>`).join('')}</select></label>
   <div class="w tp"><div class="seg" id="pgSeg"><button type="button" data-pg="pago">Pago</button><button type="button" data-pg="receber">A receber</button></div></div>
+  <label class="tp" id="vencL">Vencimento<input name="venc" type="date" value="${esc(o.venc || addD(today(), 7))}"></label>
+  <div class="w tp tot" id="totBox"></div>
   <label>Data<input name="d" type="date" required value="${esc(o.d)}"></label>
   <label>Observação<input name="o" value="${esc(o.o)}" placeholder="Opcional"></label>
   <div class="fa w"><button class="btn ink" style="flex:1;min-height:54px;font-size:17px">Salvar</button></div></form>`);
   const f = $('#dlgIn form'); f.dataset.pg = o.pg || 'pago'; f.dataset.ppid = ppid || '';
+  const its = clone(itensDe(o)); if (!its.length) { const p0 = produtos()[0]; its.push({ c: p0.c, d: p0.d, un: p0.un, ncm: p0.ncm, q: 0, pu: +p0.p || 0 }) }
+  f._its = its;
+  const paintIts = () => {
+    const ps = produtos();
+    $('#itBox').innerHTML = its.map((i, k) => `<div class="itl"><select data-itp="${k}" aria-label="Produto">${ps.map(p => `<option value="${esc(p.c)}" ${p.c === i.c ? 'selected' : ''}>${esc(p.d)}</option>`).join('')}${ps.some(p => p.c === i.c) ? '' : `<option value="${esc(i.c)}" selected>${esc(i.d)}</option>`}</select>
+      <div class="step"><button type="button" data-itd="${k}" data-d="-1">−</button><input data-itq="${k}" type="number" inputmode="decimal" min="0" step="1" value="${i.q || ''}" placeholder="0"><button type="button" data-itd="${k}" data-d="1">+</button></div>
+      <label class="pu">R$ unid.<input data-itu="${k}" type="number" inputmode="decimal" min="0" step="0.01" value="${i.pu ? (+i.pu).toFixed(2) : ''}" placeholder="0,00"></label>
+      <span class="lt">${brl((+i.q || 0) * (+i.pu || 0))}</span>${its.length > 1 ? `<button type="button" class="lk" data-itx="${k}">Remover</button>` : ''}</div>`).join('') + `<button type="button" class="btn sm line" data-itadd>+ Outro produto</button>`;
+    paintTot() };
+  const paintTot = () => { const sub = its.reduce((a, i) => a + (+i.q || 0) * (+i.pu || 0), 0), ds = +f.elements.ds.value || 0;
+    $('#totBox').innerHTML = `<span>Total</span><b>${brl(Math.max(0, sub - ds))}</b>`;
+    f.querySelectorAll('.itl .lt').forEach((e, k) => e.textContent = brl((+its[k].q || 0) * (+its[k].pu || 0))) };
+  f.addEventListener('input', e => { const t = e.target;
+    if (t.dataset.itq != null) its[+t.dataset.itq].q = +t.value || 0;
+    if (t.dataset.itu != null) its[+t.dataset.itu].pu = +t.value || 0;
+    if (t.name === 'ds' || t.dataset.itq != null || t.dataset.itu != null) paintTot() });
+  f.addEventListener('change', e => { const t = e.target; if (t.dataset.itp != null) { const p = prodDe(t.value), i = its[+t.dataset.itp]; Object.assign(i, { c: p.c, d: p.d, un: p.un, ncm: p.ncm, pu: +p.p || i.pu }); paintIts() } });
   const paint = () => {
     f.dataset.t = st.t; f.dataset.pdv = st.pdv;
     f.querySelectorAll('[data-t]').forEach(b => b.classList.toggle('on', b.dataset.t === st.t));
     f.querySelectorAll('.tp').forEach(x => x.hidden = st.t === 'v');
     f.querySelectorAll('[data-pg]').forEach(b => b.classList.toggle('on', b.dataset.pg === f.dataset.pg));
+    $('#vencL').hidden = st.t === 'v' || f.dataset.pg !== 'receber';
     const p = pdvs.get(st.pdv), box = $('#pdvBox');
     if (p) box.innerHTML = `<div class="chosen"><div><b>${esc(p.nome)}</b><div class="pl">${esc(lugar(p))}</div></div>${oid ? '' : '<button type="button" class="btn sm line" id="pdvTroca">Trocar</button>'}</div>`;
     else { box.innerHTML = `<label>Ponto de venda<input id="pdvQ" type="search" placeholder="Digite o nome, bairro ou cidade" autocomplete="off"></label><div class="pick" id="pdvRes"></div>`; const q = $('#pdvQ'); q.addEventListener('input', find); find(); setTimeout(() => q.focus(), 50) }
@@ -374,12 +443,49 @@ function pedForm(pid, oid, ppid) {
     if (b.dataset.t) { st.t = b.dataset.t; paint() }
     if (b.dataset.pg) { f.dataset.pg = b.dataset.pg; paint() }
     if (b.dataset.pick) { st.pdv = b.dataset.pick; paint() }
+    if (b.dataset.itd != null) { const i = its[+b.dataset.itd]; i.q = Math.max(0, (+i.q || 0) + (+b.dataset.d)); paintIts(); return }
+    if (b.dataset.itx != null) { its.splice(+b.dataset.itx, 1); paintIts(); return }
+    if (b.dataset.itadd != null) { const p0 = produtos()[0]; its.push({ c: p0.c, d: p0.d, un: p0.un, ncm: p0.ncm, q: 0, pu: +p0.p || 0 }); paintIts(); return }
     if (b.dataset.inc) { const i = f.elements[b.dataset.inc]; i.value = Math.max(0, (+i.value || 0) + (+b.dataset.d)); i.dispatchEvent(new Event('input', { bubbles: true })) }
   });
-  f.elements.q.addEventListener('input', () => { if (+cfg.preco && !f.elements.v.dataset.t) f.elements.v.value = (+f.elements.q.value * cfg.preco).toFixed(2) });
-  f.elements.v.addEventListener('input', e => { if (e.isTrusted) f.elements.v.dataset.t = 1 });
-  paint();
+  paint(); paintIts();
 }
+
+/* comprovante de venda (pedido) */
+function recHTML(p, o) { const e = emp(), its = itensDe(o), sub = subtotal(o), nfo = o.nf;
+  const L = (k, v) => v ? `<div><span>${k}</span>${esc(v)}</div>` : '';
+  return `<div class="rec" id="rec"><div class="rh"><img src="logo.png" alt=""><div><b>PEDIDO DE VENDA</b><span>Nº ${esc(o.n || o.id)}</span><span>${brD(o.d)}</span></div></div>
+  <div class="rb"><h4>Empresa</h4>${L('', e.razao || 'Seda de Favela')}${L('CNPJ/CPF', e.doc)}${L('IE', e.ie)}${L('', [e.endereco, e.bairro].filter(Boolean).join(' - '))}${L('', [e.cidade, e.uf].filter(Boolean).join('/') + (e.cep ? ' · CEP ' + e.cep : ''))}${L('Contato', [e.tel, e.email].filter(Boolean).join(' · '))}</div>
+  <div class="rb"><h4>Cliente</h4>${L('', p.razao || p.nome)}${p.razao && p.razao !== p.nome ? L('Ponto', p.nome) : ''}${L('CPF/CNPJ', p.doc)}${L('IE', p.ie)}${L('', p.endereco)}${L('', [p.bairro, [p.cidade, p.uf].filter(Boolean).join('/')].filter(Boolean).join(' · ') + (p.cep ? ' · CEP ' + p.cep : ''))}${L('Contato', p.contato)}</div>
+  <table class="rt"><thead><tr><th>Produto</th><th class="r">Qtd</th><th class="r">Unit.</th><th class="r">Total</th></tr></thead><tbody>${its.map(i => `<tr><td>${esc(i.d)}<small>${esc([i.c, i.ncm && 'NCM ' + i.ncm].filter(Boolean).join(' · '))}</small></td><td class="r">${nf(i.q)} ${esc(i.un || '')}</td><td class="r">${brl(i.pu)}</td><td class="r">${brl(i.q * i.pu)}</td></tr>`).join('')}</tbody></table>
+  <div class="rs">${o.ds ? `<div><span>Subtotal</span>${brl(sub)}</div><div><span>Desconto</span>- ${brl(o.ds)}</div>` : ''}<div class="big"><span>Total</span>${brl(o.v)}</div></div>
+  <div class="rb"><h4>Pagamento</h4>${L('Forma', o.fp)}${L('Situação', o.pg === 'receber' ? 'A receber' + (o.venc ? ' até ' + brD(o.venc) : '') : 'Pago')}${o.pg === 'receber' && e.pix ? L('Chave PIX', e.pix) : ''}</div>
+  ${o.o ? `<div class="rb"><h4>Observação</h4><div>${esc(o.o)}</div></div>` : ''}
+  <div class="rf">Vendedor: ${esc(o.pn || o.por || '')}${nfo ? ` · NF-e: ${nfo.st === 'emitida' ? 'emitida nº ' + esc(nfo.num || '') : 'a emitir'}` : ''}<br>${esc(e.rodape || 'Documento de controle interno, sem valor fiscal. A nota fiscal eletrônica, quando emitida, é enviada separadamente.')}</div></div>` }
+function recibo(pid, oid) { const p = pdvs.get(pid), o = (p?.hist || []).find(x => x.id === oid); if (!p || !o) return; openId = null;
+  const falta = o.nf && o.nf.st !== 'emitida' ? faltaNF(p) : [], dg = String(p.contato || '').replace(/\D/g, '');
+  show('Pedido salvo', `${recHTML(p, o)}
+  ${falta.length ? `<div class="flag noprint" style="margin-top:12px">Para a nota fiscal ainda falta: <b>${falta.map(esc).join(', ')}</b>. <button class="lk" data-act="edit" data-id="${esc(pid)}">Completar cliente</button></div>` : ''}
+  <div class="cb noprint" style="margin-top:14px"><button class="btn sun" data-act="recShare" data-p="${esc(pid)}" data-id="${esc(oid)}">Enviar imagem</button>${dg.length >= 10 ? `<button class="btn line" data-act="recWa" data-p="${esc(pid)}" data-id="${esc(oid)}">WhatsApp (texto)</button>` : ''}<button class="btn line" data-act="recPrint">Imprimir / PDF</button><button class="btn line" data-act="open" data-id="${esc(pid)}">Ver ponto</button></div>`) }
+function recTexto(p, o) { const e = emp(), its = itensDe(o);
+  return [`*PEDIDO DE VENDA Nº ${o.n || o.id}*`, `${e.razao || 'Seda de Favela'}${e.doc ? ' · ' + e.doc : ''}`, `Data: ${brD(o.d)}`, `Cliente: ${p.razao || p.nome}${p.doc ? ' · ' + p.doc : ''}`, '', ...its.map(i => `• ${nf(i.q)} ${i.un || ''} ${i.d} x ${brl(i.pu)} = ${brl(i.q * i.pu)}`), o.ds ? `Desconto: - ${brl(o.ds)}` : '', `*Total: ${brl(o.v)}*`, `Pagamento: ${o.fp || ''} · ${o.pg === 'receber' ? 'a receber' + (o.venc ? ' até ' + brD(o.venc) : '') : 'pago'}`, o.pg === 'receber' && e.pix ? `PIX: ${e.pix}` : '', `Vendedor: ${o.pn || ''}`, '', '_Documento sem valor fiscal._'].filter(x => x !== '').join('\n') }
+async function recImagem(p, o) {
+  const W = 1080, P = 64, c = document.createElement('canvas'), x = c.getContext('2d'), e = emp(), its = itensDe(o), rows = [];
+  const T = (t, f, col = '#1a1714', a = 'left', gap = 12) => rows.push({ t: String(t ?? ''), f, col, a, gap });
+  T('PEDIDO DE VENDA', '800 56px "Barlow Condensed"', '#c63d1d', 'left', 6); T('Nº ' + (o.n || o.id) + '  ·  ' + brD(o.d), '600 30px Barlow', '#1a1714', 'left', 30);
+  T('EMPRESA', '700 24px Barlow', '#8a8178', 'left', 4); T(e.razao || 'Seda de Favela', '600 30px Barlow'); if (e.doc) T('CNPJ/CPF ' + e.doc + (e.ie ? '  ·  IE ' + e.ie : ''), '400 26px Barlow'); if (e.tel) T(e.tel, '400 26px Barlow', '#1a1714', 'left', 26);
+  T('CLIENTE', '700 24px Barlow', '#8a8178', 'left', 4); T(p.razao || p.nome, '600 30px Barlow'); if (p.doc) T('CPF/CNPJ ' + p.doc, '400 26px Barlow'); const end = [p.endereco, p.bairro, [p.cidade, p.uf].filter(Boolean).join('/')].filter(Boolean).join(' · '); if (end) T(end, '400 24px Barlow', '#1a1714', 'left', 26);
+  T('PRODUTOS', '700 24px Barlow', '#8a8178', 'left', 8);
+  its.forEach(i => { T(i.d, '600 28px Barlow', '#1a1714', 'left', 2); T(`${nf(i.q)} ${i.un || ''} x ${brl(i.pu)} = ${brl(i.q * i.pu)}`, '400 26px Barlow', '#1a1714', 'left', 14) });
+  if (o.ds) T('Desconto: - ' + brl(o.ds), '400 26px Barlow');
+  T('TOTAL ' + brl(o.v), '800 52px "Barlow Condensed"', '#1a1714', 'left', 20);
+  T(`Pagamento: ${o.fp || ''} · ${o.pg === 'receber' ? 'a receber' + (o.venc ? ' até ' + brD(o.venc) : '') : 'pago'}`, '600 26px Barlow'); if (o.pg === 'receber' && e.pix) T('PIX: ' + e.pix, '600 26px Barlow');
+  T('Vendedor: ' + (o.pn || ''), '400 24px Barlow', '#1a1714', 'left', 28); T('Documento sem valor fiscal.', 'italic 400 22px Barlow', '#8a8178');
+  let h = P + 200; x.font = '10px Barlow'; for (const r of rows) h += parseInt(r.f.match(/(\d+)px/)[1]) * 1.25 + r.gap; c.width = W; c.height = h + P;
+  x.fillStyle = '#fff'; x.fillRect(0, 0, W, c.height); x.fillStyle = '#c63d1d'; x.fillRect(0, 0, W, 14);
+  try { await document.fonts.ready; const img = new Image(); img.src = 'logo.png'; await img.decode(); const s = 170 / img.height; x.drawImage(img, W - P - img.width * s, P - 10, img.width * s, 170) } catch { }
+  let y = P + 10; for (const r of rows) { const sz = parseInt(r.f.match(/(\d+)px/)[1]); x.font = r.f; x.fillStyle = r.col; x.textBaseline = 'top'; let t = r.t; while (x.measureText(t).width > W - 2 * P - (y < P + 180 ? 200 : 0) && t.length > 4) t = t.slice(0, -2); if (t !== r.t) t = t.slice(0, -1) + '…'; x.fillText(t, P, y); y += sz * 1.25 + r.gap }
+  return new Promise(r => c.toBlob(r, 'image/png')) }
 
 function bonForm(id) { const p = pdvs.get(id), s = M.get(id); openId = null;
   show('Registrar bonificação', `<form class="f" data-form="bon" data-id="${esc(id)}"><p class="w"><b>${esc(p.nome)}</b> está no nível ${tier(s.nivel)} com ${s.pts} pts.</p>
@@ -403,23 +509,32 @@ document.addEventListener('submit', async e => {
     for (let i = 1; i < 4; i++) if (c.niveis[i].min <= c.niveis[i - 1].min) return toast('Cada nível precisa de mais pontos que o anterior.');
     return fire(setDoc(doc(db, 'config', 'geral'), c), 'Ajustes salvos') }
   if (f.id === 'teamF') return addMember(v, f);
+  if (f.id === 'empF') { const e = {}; for (const k of ['razao', 'doc', 'ie', 'endereco', 'bairro', 'cidade', 'uf', 'cep', 'tel', 'email', 'pix', 'rodape']) e[k] = (v[k] || '').trim(); e.uf = e.uf.toUpperCase();
+    return fire(setDoc(doc(db, 'config', 'geral'), { ...cfg, empresa: e, controlaNF: !!v.controlaNF }), 'Dados da empresa salvos') }
+  if (f.id === 'prodF') { const l = produtos().map((_, k) => ({ c: v['c' + k].trim(), d: v['d' + k].trim(), un: (v['un' + k] || 'UN').trim().toUpperCase(), p: +v['p' + k] || 0, ncm: (v['ncm' + k] || '').trim(), f: v['f' + k] === '' ? 1 : +v['f' + k] }));
+    if (new Set(l.map(x => x.c)).size !== l.length) return toast('Cada produto precisa de um código diferente.');
+    return fire(setDoc(doc(db, 'config', 'geral'), { ...cfg, produtos: l }), 'Produtos salvos') }
+  if (f.dataset.form === 'nf') { const p = pdvs.get(f.dataset.p); fire(updateDoc(pref(p.id), { hist: p.hist.map(x => x.id === f.dataset.id ? { ...x, nf: { st: 'emitida', num: v.num.trim(), data: v.data, chave: v.chave.trim() } } : x) }), 'NF-e marcada como emitida'); dlg.close(); return }
   const t = f.dataset.form, id = f.dataset.id;
   if (t === 'pdv') { const ind = v.ind ? byLbl(v.ind) : null;
-    const d = { nome: v.nome.trim(), status: v.status, tipo: v.tipo, contato: v.contato.trim(), bairro: v.bairro.trim(), cidade: v.cidade.trim(), uf: v.uf.trim().toUpperCase(), endereco: v.endereco.trim(), redes: v.redes.trim(), doc: v.doc.trim(), ciclo: +v.ciclo || null, proxContato: v.proxContato || null, indicadoPor: ind && ind.id !== id ? ind.id : null, obs: v.obs.trim(), atualizado: today(), atualizadoPor: me.email };
+    const d = { nome: v.nome.trim(), status: v.status, tipo: v.tipo, contato: v.contato.trim(), bairro: v.bairro.trim(), cidade: v.cidade.trim(), uf: v.uf.trim().toUpperCase(), endereco: v.endereco.trim(), redes: v.redes.trim(), doc: v.doc.trim(), razao: v.razao.trim(), ie: v.ie.trim(), cep: v.cep.trim(), email: v.email.trim(), ciclo: +v.ciclo || null, proxContato: v.proxContato || null, indicadoPor: ind && ind.id !== id ? ind.id : null, obs: v.obs.trim(), atualizado: today(), atualizadoPor: me.email };
     if (id) { fire(updateDoc(pref(id), d), 'Ponto atualizado'); detail(id) }
     else { const r = doc(collection(db, 'pdvs')); fire(setDoc(r, { ...d, hist: [], flags: [], criado: today(), criadoPor: me.email }), 'Ponto cadastrado'); dlg.close() }
     return }
   if (t === 'ped') { const p = pdvs.get(f.dataset.pdv); if (!p) return toast('Escolha o ponto de venda.');
-    const tv = f.dataset.t === 'v', q = +v.q || 0; if (!tv && q <= 0) return toast('Coloque a quantidade do pedido.');
+    const tv = f.dataset.t === 'v', its = (f._its || []).filter(i => +i.q > 0).map(i => ({ c: i.c, d: i.d, un: i.un || 'UN', ncm: i.ncm || '', q: +i.q, pu: +i.pu || 0 }));
+    const q = its.reduce((a, i) => a + i.q * (prodDe(i.c)?.f ?? 1), 0), ds = +v.ds || 0, tot = Math.max(0, its.reduce((a, i) => a + i.q * i.pu, 0) - ds);
+    if (!tv && !its.length) return toast('Coloque a quantidade de pelo menos um produto.');
     if (tv && !has(v.s) && !v.o.trim()) return toast('Na visita, anote a sobra ou uma observação.');
     const old = id ? (p.hist || []).find(x => x.id === id) : null;
-    const en = { id: id || rid(), t: tv ? 'v' : 'p', d: v.d, q: tv ? 0 : q, v: tv ? 0 : (v.v === '' ? q * (+cfg.preco || 0) : +v.v), s: has(v.s) ? +v.s : null, pg: tv ? null : f.dataset.pg, o: v.o.trim(), por: old?.por || me.email, pn: old?.pn || me.nome, em: old?.em || Date.now() };
+    const en = { id: id || rid(), t: tv ? 'v' : 'p', d: v.d, q: tv ? 0 : q, v: tv ? 0 : tot, s: has(v.s) ? +v.s : null, pg: tv ? null : f.dataset.pg, o: v.o.trim(), por: old?.por || me.email, pn: old?.pn || me.nome, em: old?.em || Date.now() };
+    if (!tv) Object.assign(en, { n: old?.n || numPedido(v.d), it: its, ds, fp: v.fp, venc: f.dataset.pg === 'receber' ? v.venc : null, nf: old?.nf || (cfg.controlaNF === false ? null : { st: 'pendente' }) });
     if (old) fire(updateDoc(pref(p.id), { hist: (p.hist || []).map(x => x.id === id ? en : x) }), 'Registro atualizado');
     else { const up = { hist: arrayUnion(en), atualizado: today() }; let msg = tv ? 'Visita registrada' : 'Pedido salvo';
       if (!tv && p.status !== 'ativo') { up.status = 'ativo'; msg += `. ${p.nome} agora é Ativo` }
       fire(updateDoc(pref(p.id), up), msg) }
     if (location.hash === '#novo') history.replaceState(null, '', '#repor');
-    setTimeout(() => detail(p.id), 30); return }
+    setTimeout(() => (!tv && !old) ? recibo(p.id, en.id) : detail(p.id), 30); return }
   if (t === 'bon') { fire(addDoc(collection(db, 'bonus'), { pdv: id, desc: v.desc.trim(), data: v.data || today(), por: me.email }), 'Bonificação registrada'); dlg.close() }
 });
 
@@ -450,9 +565,20 @@ document.addEventListener('click', e => {
   if (act === 'rcid') { rcid = v; return render() }
   if (act === 'skip') { skip.add(id); return render() }
   if (act === 'unskip') { skip.clear(); return render() }
+  if (act === 'recWa') { const p = pdvs.get(a.dataset.p), o = p.hist.find(x => x.id === id), d = String(p.contato).replace(/\D/g, ''); window.open(`https://wa.me/${d.length <= 11 ? '55' + d : d}?text=${encodeURIComponent(recTexto(p, o))}`, '_blank'); return }
+  if (act === 'recShare') { const p = pdvs.get(a.dataset.p), o = p.hist.find(x => x.id === id);
+    recImagem(p, o).then(async b => { const file = new File([b], `pedido-${o.n || o.id}.png`, { type: 'image/png' });
+      if (navigator.canShare && navigator.canShare({ files: [file] })) { try { await navigator.share({ files: [file], title: 'Pedido ' + (o.n || ''), text: recTexto(p, o) }) } catch { } }
+      else { const u = URL.createObjectURL(b), l = document.createElement('a'); l.href = u; l.download = file.name; document.body.appendChild(l); l.click(); setTimeout(() => { URL.revokeObjectURL(u); l.remove() }, 500); toast('Imagem do pedido baixada.') } }); return }
+  if (act === 'recPrint') { document.body.classList.add('printing'); setTimeout(() => { window.print(); document.body.classList.remove('printing') }, 50); return }
+  if (act === 'rec') return recibo(a.dataset.p, id);
+  if (act === 'nfOk' && can.admin()) return nfForm(a.dataset.p, id);
+  if (act === 'csvNF' && can.admin()) return csvNF();
+  if (act === 'prodAdd' && can.admin()) { const l = clone(produtos()); l.push({ c: 'NOVO-' + (l.length + 1), d: 'Novo produto', un: 'UN', p: 0, ncm: '', f: 0 }); return fire(setDoc(doc(db, 'config', 'geral'), { ...cfg, produtos: l }), 'Produto adicionado') }
+  if (act === 'prodDel' && can.admin()) { const l = clone(produtos()); l.splice(+id, 1); return fire(setDoc(doc(db, 'config', 'geral'), { ...cfg, produtos: l }), 'Produto removido') }
   if (act === 'csv') { const q = x => `"${String(x ?? '').replace(/"/g, '""')}"`; let rows;
     if (v === 'pdv') rows = [['Nome', 'Status', 'Tipo', 'Contato', 'Bairro', 'Cidade', 'UF', 'Endereço', 'Redes', 'CPF/CNPJ', 'Pedidos', 'Total', 'Último pedido', 'Próxima reposição', 'Giro/semana', 'Pontos', 'Nível', 'Obs'], ...[...pdvs.values()].map(p => { const s = M.get(p.id); return [p.nome, ST[p.status], p.tipo, p.contato, p.bairro, p.cidade, p.uf, p.endereco, p.redes, p.doc, s.n, s.qtd, s.last?.d || '', s.prox || '', s.giro ? nf(s.giro) : '', s.pts, cfg.niveis[s.nivel].nome, p.obs] })];
-    else rows = [['Data', 'Tipo', 'Ponto', 'Cidade', 'Quantidade', 'Valor', 'Sobra', 'Pagamento', 'Registrado por', 'Obs'], ...evs.slice().sort(byD).map(o => { const p = pdvs.get(o.pdv) || {}; return [o.d, o.t === 'v' ? 'Visita' : 'Pedido', p.nome, p.cidade, o.q, o.v, o.s ?? '', o.pg || '', o.pn || o.por || '', o.o] })];
+    else rows = [['Pedido', 'Data', 'Tipo', 'Ponto', 'Cidade', 'Quantidade', 'Valor', 'Sobra', 'Pagamento', 'Registrado por', 'Obs'], ...evs.slice().sort(byD).map(o => { const p = pdvs.get(o.pdv) || {}; return [o.n || '', o.d, o.t === 'v' ? 'Visita' : 'Pedido', p.nome, p.cidade, o.q, o.v, o.s ?? '', o.pg || '', o.pn || o.por || '', o.o] })];
     return download(`${v === 'pdv' ? 'pontos' : 'pedidos'}-seda-de-favela-${today()}.csv`, rows.map(r => r.map(q).join(';')).join('\n')) }
   if (!can.write()) return;
   if (act === 'newPdv') return pdvForm();
