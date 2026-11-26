@@ -523,7 +523,7 @@ function notaTexto(p, o) { const its = itensDe(o), L = [];
 async function recImagem(p, o) {
   const W = 1080, P = 64, c = document.createElement('canvas'), x = c.getContext('2d'), e = emp(), its = itensDe(o), rows = [];
   const T = (t, f, col = '#1a1714', a = 'left', gap = 12) => rows.push({ t: String(t ?? ''), f, col, a, gap });
-  T('PEDIDO DE VENDA', '800 56px "Barlow Condensed"', '#1e1e1e', 'left', 6); T('Nº ' + (o.n || o.id) + '  ·  ' + brD(o.d), '600 30px Barlow', '#1a1714', 'left', 30);
+  T('PEDIDO DE VENDA', '800 56px "Barlow Condensed"', '#8a0b0b', 'left', 6); T('Nº ' + (o.n || o.id) + '  ·  ' + brD(o.d), '600 30px Barlow', '#1a1714', 'left', 30);
   T('EMPRESA', '700 24px Barlow', '#8a8178', 'left', 4); T(e.razao || 'Seda de Favela', '600 30px Barlow'); if (e.doc) T('CNPJ/CPF ' + e.doc + (e.ie ? '  ·  IE ' + e.ie : ''), '400 26px Barlow'); if (e.tel) T(e.tel, '400 26px Barlow', '#1a1714', 'left', 26);
   T('CLIENTE', '700 24px Barlow', '#8a8178', 'left', 4); T(p.razao || p.nome, '600 30px Barlow'); if (p.doc) T('CPF/CNPJ ' + p.doc, '400 26px Barlow'); const end = [p.endereco, p.bairro, [p.cidade, p.uf].filter(Boolean).join('/')].filter(Boolean).join(' · '); if (end) T(end, '400 24px Barlow', '#1a1714', 'left', 26);
   T('PRODUTOS', '700 24px Barlow', '#8a8178', 'left', 8);
@@ -533,7 +533,7 @@ async function recImagem(p, o) {
   T(`Pagamento: ${o.fp || ''} · ${o.pg === 'receber' ? 'a receber' + (o.venc ? ' até ' + brD(o.venc) : '') : 'pago'}`, '600 26px Barlow'); if (o.pg === 'receber' && e.pix) T('PIX: ' + e.pix, '600 26px Barlow');
   T('Vendedor: ' + (o.pn || ''), '400 24px Barlow', '#1a1714', 'left', 28); T('Documento sem valor fiscal.', 'italic 400 22px Barlow', '#8a8178');
   let h = P + 200; x.font = '10px Barlow'; for (const r of rows) h += parseInt(r.f.match(/(\d+)px/)[1]) * 1.25 + r.gap; c.width = W; c.height = h + P;
-  x.fillStyle = '#fff'; x.fillRect(0, 0, W, c.height); x.fillStyle = '#1e1e1e'; x.fillRect(0, 0, W, 14);
+  x.fillStyle = '#fff'; x.fillRect(0, 0, W, c.height); x.fillStyle = '#8a0b0b'; x.fillRect(0, 0, W, 14);
   try { await document.fonts.ready; const img = new Image(); img.src = 'logo.png'; await img.decode(); const s = 170 / img.height; x.drawImage(img, W - P - img.width * s, P - 10, img.width * s, 170) } catch { }
   let y = P + 10; for (const r of rows) { const sz = parseInt(r.f.match(/(\d+)px/)[1]); x.font = r.f; x.fillStyle = r.col; x.textBaseline = 'top'; let t = r.t; while (x.measureText(t).width > W - 2 * P - (y < P + 180 ? 200 : 0) && t.length > 4) t = t.slice(0, -2); if (t !== r.t) t = t.slice(0, -1) + '…'; x.fillText(t, P, y); y += sz * 1.25 + r.gap }
   return new Promise(r => c.toBlob(r, 'image/png')) }
