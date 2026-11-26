@@ -28,7 +28,7 @@ const DEF = { unidade: 'caixa', preco: 0, ciclo: 15, ptsCaixa: 10, ptsPontual: 5
 /* ---------- estado ---------- */
 let app, auth, db, me = null, started = false, unsubs = [];
 let pdvs = new Map(), evs = [], peds = [], bons = [], cfg = clone(DEF), acessos = new Map(), M = new Map();
-let impTxt = '', pending = 0, cached = true, F = { q: '', st: '', cid: '', tipo: '', sort: 'nome' }, rcid = '', per = 90, skip = new Set(), undo = null, openId = null, installEvt = null;
+let impTxt = '', pending = 0, cached = true, F = { q: '', st: '', cid: '', tipo: '', sort: 'nome' }, rcid = '', per = 90, skip = new Set(), undo = null, openId = null, installEvt = null, ip = 'mes', iv = 'eu';
 const can = { write: () => me && me.papel !== 'leitura', admin: () => me && me.papel === 'admin' };
 
 /* ---------- inicialização ---------- */
@@ -338,10 +338,51 @@ function vMais() {
   ${!standalone && ios ? `<div class="card" style="margin-top:16px;max-width:520px"><b>Instalar no iPhone</b><ol class="steps"><li>Abra este endereço no <b>Safari</b>.</li><li>Toque em <b>Compartilhar</b> (quadrado com seta pra cima).</li><li>Escolha <b>Adicionar à Tela de Início</b> e confirme.</li></ol></div>` : ''}
   <p class="pl" style="margin-top:18px">PDVs Seda de Favela · ${esc(PAPEIS[me?.papel] || '')}${navigator.onLine ? '' : ' · sem internet'}</p>` }
 
-const V = { notas: vNotas, repor: vRepor, pontos: vPontos, ranking: vRanking, bonus: vBonus, triagem: vTriagem, equipe: vEquipe, ajustes: vAjustes, mais: vMais };
-const cur = () => { const h = location.hash.slice(1); return V[h] ? h : 'repor' };
+/* ---------- início: capa com os números de cada vendedor ---------- */
+const nomeDe = email => { if (!email) return 'Sem vendedor'; const a = acessos.get(email); if (a?.nome) return a.nome; if (me && email === me.email) return me.nome;
+  const o = peds.find(x => x.por === email && x.pn); if (o) return o.pn; for (const p of pdvs.values()) if (p.criadoPor === email && p.criadoPorNome) return p.criadoPorNome; return email.split('@')[0] };
+function conquistador(p) { if (p.dono) return p.dono; if (p.criadoPor) return p.criadoPor; const f = M.get(p.id)?.ps.find(o => o.por); return f ? f.por : '' }
+const conqD = p => (p.criadoPor && p.criado) || M.get(p.id)?.ps[0]?.d || p.criado || '';
+function desdeDe(k) { const t = today(); return k === 'mes' ? t.slice(0, 8) + '01' : k === 'd90' ? addD(t, -89) : '0000-00-00' }
+function numeros(email, k) { const de = desdeDe(k), mine = o => !email || o.por === email;
+  const ps = peds.filter(o => mine(o) && o.d >= de), con = [...pdvs.values()].filter(p => p.status !== 'fechou' && (email ? conquistador(p) === email : conquistador(p)));
+  const conP = con.filter(p => conqD(p) >= de);
+  return { q: ps.reduce((a, o) => a + (+o.q || 0), 0), n: ps.length, v: ps.reduce((a, o) => a + (+o.v || 0), 0), pts: new Set(ps.map(o => o.pdv)).size,
+    con, conP, at: con.filter(p => p.status === 'ativo').length, pro: con.filter(p => p.status === 'prospeccao').length } }
+function vInicio() {
+  const eq = can.admin() && iv === 'eq', em = eq ? '' : me.email, x = numeros(em, ip), pn = (me.nome || '').split(' ')[0];
+  const PER = { mes: 'Este mês', d90: '90 dias', tudo: 'Desde o início' };
+  const h0 = new Date().getHours(), oi = h0 < 12 ? 'Bom dia' : h0 < 18 ? 'Boa tarde' : 'Boa noite';
+  const meus = x.con.slice().sort((a, b) => (conqD(b) > conqD(a) ? 1 : -1)).slice(0, 6);
+  const rep = x.con.filter(p => p.status === 'ativo' && M.get(p.id).prox && M.get(p.id).dAte <= 3).sort((a, b) => M.get(a.id).dAte - M.get(b.id).dAte);
+  // ranking da equipe no período
+  const de = desdeDe(ip), rk = new Map(), add = (e, k, n) => { if (!e) return; const r = rk.get(e) || { q: 0, c: 0 }; r[k] += n; rk.set(e, r) };
+  peds.filter(o => o.d >= de && o.por).forEach(o => add(o.por, 'q', +o.q || 0));
+  [...pdvs.values()].forEach(p => { const c = conquistador(p); if (c && p.status !== 'fechou' && conqD(p) >= de) add(c, 'c', 1) });
+  const rl = [...rk].sort((a, b) => b[1].q - a[1].q || b[1].c - a[1].c), mx = Math.max(1, ...rl.map(r => r[1].q)), pos = rl.findIndex(r => r[0] === me.email);
+  let h = `<section class="capa"><div class="capa-t"><span class="pl">${oi}${eq ? '' : ','}</span><h2>${eq ? 'Números da equipe' : esc(pn || 'vendedor')}</h2>
+   <p class="pl">${eq ? 'Tudo que a equipe vendeu e conquistou.' : pos >= 0 && rl.length > 1 ? `Você está em <b>${pos + 1}º</b> no ranking da equipe (${PER[ip].toLowerCase()}).` : 'Seus números na rua, atualizados a cada registro.'}</p></div>
+   <div class="cta"><button class="btn mega" data-w data-act="newPdv"><span class="plus">+</span><span>Cadastrar novo PDV<small>ponto conquistado ou em prospecção</small></span></button>
+   <button class="btn mega2" data-w data-act="newPed">Registrar pedido ou visita</button></div></section>
+  <div class="chips">${can.admin() ? `<button class="chip ${!eq ? 'on' : ''}" data-act="iv" data-v="eu">Meus números</button><button class="chip ${eq ? 'on' : ''}" data-act="iv" data-v="eq">Equipe toda</button><span class="sep"></span>` : ''}${Object.entries(PER).map(([k, t]) => `<button class="chip ${ip === k ? 'on' : ''}" data-act="ip" data-v="${k}">${t}</button>`).join('')}</div>
+  <div class="mets">
+   <div class="met big"><span class="num">${nf(x.q)}</span><small>${esc(Us(x.q))} de seda vendidas</small><em>${x.n} ${x.n === 1 ? 'pedido' : 'pedidos'} em ${x.pts} ${x.pts === 1 ? 'ponto' : 'pontos'}</em></div>
+   <div class="met big alt"><span class="num">${x.con.length}</span><small>estabelecimentos conquistados${eq ? '' : ' no seu nome'}</small><em>${x.conP.length ? `+${x.conP.length} ${ip === 'tudo' ? 'no total' : PER[ip].toLowerCase()}` : `nenhum novo ${ip === 'mes' ? 'este mês' : 'no período'}`}</em></div>
+   <div class="met"><span class="num">${x.at}</span><small>conquistados ativos</small></div>
+   <div class="met"><span class="num">${x.pro}</span><small>em prospecção</small></div>
+   <div class="met"><span class="num">${x.v ? brl(x.v) : 'R$ 0'}</span><small>vendido${ip === 'tudo' ? '' : ' no período'}</small></div>
+  </div>
+  <div class="cols" style="margin-top:8px">
+   <div class="rk"><h3>Ranking da equipe <span>${PER[ip]}</span></h3>${rl.length ? rl.slice(0, 8).map(([e, r], i) => `<div class="rr ${e === me.email ? 'me' : ''}" style="cursor:default"><i>${i + 1}</i><span class="n">${esc(nomeDe(e))}${e === me.email ? ' (você)' : ''}</span><span class="v">${nf(r.q)} ${esc(Us(r.q))} · ${r.c} novos</span><div class="tr"><div style="width:${r.q / mx * 100}%"></div></div></div>`).join('') : '<p class="pl">Ninguém registrou pedido nesse período ainda.</p>'}</div>
+   <div class="rk"><h3>${eq ? 'Conquistas recentes' : 'Seus pontos'} <span>${x.con.length}</span></h3>${meus.length ? meus.map(p => `<div class="rr" data-act="open" data-id="${esc(p.id)}"><i>•</i><span class="n">${esc(p.nome)}</span><span class="v">${pill(p.status)}</span><span class="pl" style="grid-column:2/4">${esc(lugar(p))}${eq ? ' · ' + esc(nomeDe(conquistador(p))) : ''}</span></div>`).join('') + (x.con.length > 6 ? `<a class="lk" href="#pontos">Ver todos os pontos</a>` : '') : `<div class="empty" style="padding:16px">${eq ? 'Nenhum ponto tem vendedor definido ainda.' : 'Nenhum ponto no seu nome ainda. Cada ponto que você cadastrar ou fizer o primeiro pedido entra aqui.'}</div>`}
+   ${rep.length ? `<h3>Pra repor até 3 dias <span>${rep.length}</span></h3>${rep.slice(0, 5).map(p => `<div class="rr" data-act="open" data-id="${esc(p.id)}"><i>!</i><span class="n">${esc(p.nome)}</span><span class="v">${M.get(p.id).dAte < 0 ? 'atrasado ' : ''}${rel(M.get(p.id).dAte)}</span></div>`).join('')}<a class="lk" href="#repor">Abrir reposição</a>` : ''}</div>
+  </div>`;
+  return h }
+
+const V = { inicio: vInicio, notas: vNotas, repor: vRepor, pontos: vPontos, ranking: vRanking, bonus: vBonus, triagem: vTriagem, equipe: vEquipe, ajustes: vAjustes, mais: vMais };
+const cur = () => { const h = location.hash.slice(1); return V[h] ? h : 'inicio' };
 function render() {
-  if (!me || $('#app').hidden) return; derive(); kpis(); const v = cur();
+  if (!me || $('#app').hidden) return; derive(); kpis(); const v = cur(); document.body.classList.toggle('v-inicio', v === 'inicio');
   const sub = ['ranking', 'triagem', 'equipe', 'ajustes', 'mais', 'notas'].includes(v);
   document.querySelectorAll('#tabs a').forEach(a => { const h = a.getAttribute('href'); a.classList.toggle('on', h === '#' + v || (sub && h === '#mais')) });
   const ae = document.activeElement, id = ae?.id, pos = ae?.selectionStart;
@@ -353,7 +394,7 @@ function render() {
 /* ---------- janelas ---------- */
 const dlg = $('#dlg');
 function show(title, body) { $('#dlgIn').innerHTML = `<div class="dh"><h2>${title}</h2><button class="x" data-act="close" aria-label="Fechar">×</button></div><div class="db">${body}</div>`; if (!dlg.open) dlg.showModal() }
-dlg.addEventListener('close', () => { openId = null; if (location.hash === '#novo') history.replaceState(null, '', '#repor') });
+dlg.addEventListener('close', () => { openId = null; if (location.hash === '#novo') history.replaceState(null, '', '#inicio') });
 function detail(id) { const p = pdvs.get(id); if (!p) return; openId = id; const s = M.get(id);
   show(esc(p.nome), `<div class="pl">${esc(lugar(p))}${p.endereco ? ' · ' + esc(p.endereco) : ''}</div>
   <div class="cb" style="margin:10px 0">${pill(p.status)} ${s.n ? tier(s.nivel) + ` <span class="pl">${s.pts} pts</span>` : ''} ${p.contato ? `<span class="pill">${esc(p.contato)}</span>` : ''}</div>
@@ -387,6 +428,7 @@ function pdvForm(id) { const p = id ? pdvs.get(id) : { status: 'prospeccao', tip
   <label>Ciclo fixo de reposição (dias)<input name="ciclo" type="number" inputmode="numeric" min="1" value="${esc(p.ciclo || '')}"><small>Vazio: o app calcula</small></label>
   <label>Retornar na prospecção em<input name="proxContato" type="date" value="${esc(p.proxContato || '')}"></label>
   <label class="w">Indicado por<input name="ind" list="pdvList" value="${esc(ind ? lbl(ind) : '')}" autocomplete="off"><small>Outro ponto que indicou este. Gera bônus pra quem indicou.</small></label>
+  ${can.admin() ? `<label class="w">Conquistado por<select name="dono"><option value="">${p.criadoPor || p.dono ? '' : 'Ninguém definido'}</option>${[...new Set([me.email, ...acessos.keys(), ...(p.dono ? [p.dono] : []), ...(p.criadoPor ? [p.criadoPor] : [])])].map(e => `<option value="${esc(e)}" ${(p.dono || p.criadoPor) === e ? 'selected' : ''}>${esc(nomeDe(e))}</option>`).join('')}</select><small>Vendedor que leva o ponto nas métricas do Início</small></label>` : ''}
   <label class="w">Observações<textarea name="obs" rows="3">${esc(p.obs)}</textarea></label>
   <div class="fa w">${id && can.admin() ? `<button type="button" class="btn del" data-act="delPdv" data-id="${esc(id)}">Excluir ponto</button>` : ''}<button type="button" class="btn line" data-act="close">Cancelar</button><button class="btn ink">Salvar</button></div></form>
   <datalist id="cidList">${[...new Set([...pdvs.values()].map(x => x.cidade).filter(Boolean))].sort().map(c => `<option value="${esc(c)}">`).join('')}</datalist>
@@ -481,7 +523,7 @@ function notaTexto(p, o) { const its = itensDe(o), L = [];
 async function recImagem(p, o) {
   const W = 1080, P = 64, c = document.createElement('canvas'), x = c.getContext('2d'), e = emp(), its = itensDe(o), rows = [];
   const T = (t, f, col = '#1a1714', a = 'left', gap = 12) => rows.push({ t: String(t ?? ''), f, col, a, gap });
-  T('PEDIDO DE VENDA', '800 56px "Barlow Condensed"', '#c63d1d', 'left', 6); T('Nº ' + (o.n || o.id) + '  ·  ' + brD(o.d), '600 30px Barlow', '#1a1714', 'left', 30);
+  T('PEDIDO DE VENDA', '800 56px "Barlow Condensed"', '#1e1e1e', 'left', 6); T('Nº ' + (o.n || o.id) + '  ·  ' + brD(o.d), '600 30px Barlow', '#1a1714', 'left', 30);
   T('EMPRESA', '700 24px Barlow', '#8a8178', 'left', 4); T(e.razao || 'Seda de Favela', '600 30px Barlow'); if (e.doc) T('CNPJ/CPF ' + e.doc + (e.ie ? '  ·  IE ' + e.ie : ''), '400 26px Barlow'); if (e.tel) T(e.tel, '400 26px Barlow', '#1a1714', 'left', 26);
   T('CLIENTE', '700 24px Barlow', '#8a8178', 'left', 4); T(p.razao || p.nome, '600 30px Barlow'); if (p.doc) T('CPF/CNPJ ' + p.doc, '400 26px Barlow'); const end = [p.endereco, p.bairro, [p.cidade, p.uf].filter(Boolean).join('/')].filter(Boolean).join(' · '); if (end) T(end, '400 24px Barlow', '#1a1714', 'left', 26);
   T('PRODUTOS', '700 24px Barlow', '#8a8178', 'left', 8);
@@ -491,7 +533,7 @@ async function recImagem(p, o) {
   T(`Pagamento: ${o.fp || ''} · ${o.pg === 'receber' ? 'a receber' + (o.venc ? ' até ' + brD(o.venc) : '') : 'pago'}`, '600 26px Barlow'); if (o.pg === 'receber' && e.pix) T('PIX: ' + e.pix, '600 26px Barlow');
   T('Vendedor: ' + (o.pn || ''), '400 24px Barlow', '#1a1714', 'left', 28); T('Documento sem valor fiscal.', 'italic 400 22px Barlow', '#8a8178');
   let h = P + 200; x.font = '10px Barlow'; for (const r of rows) h += parseInt(r.f.match(/(\d+)px/)[1]) * 1.25 + r.gap; c.width = W; c.height = h + P;
-  x.fillStyle = '#fff'; x.fillRect(0, 0, W, c.height); x.fillStyle = '#c63d1d'; x.fillRect(0, 0, W, 14);
+  x.fillStyle = '#fff'; x.fillRect(0, 0, W, c.height); x.fillStyle = '#1e1e1e'; x.fillRect(0, 0, W, 14);
   try { await document.fonts.ready; const img = new Image(); img.src = 'logo.png'; await img.decode(); const s = 170 / img.height; x.drawImage(img, W - P - img.width * s, P - 10, img.width * s, 170) } catch { }
   let y = P + 10; for (const r of rows) { const sz = parseInt(r.f.match(/(\d+)px/)[1]); x.font = r.f; x.fillStyle = r.col; x.textBaseline = 'top'; let t = r.t; while (x.measureText(t).width > W - 2 * P - (y < P + 180 ? 200 : 0) && t.length > 4) t = t.slice(0, -2); if (t !== r.t) t = t.slice(0, -1) + '…'; x.fillText(t, P, y); y += sz * 1.25 + r.gap }
   return new Promise(r => c.toBlob(r, 'image/png')) }
@@ -527,8 +569,9 @@ document.addEventListener('submit', async e => {
   const t = f.dataset.form, id = f.dataset.id;
   if (t === 'pdv') { const ind = v.ind ? byLbl(v.ind) : null;
     const d = { nome: v.nome.trim(), status: v.status, tipo: v.tipo, contato: v.contato.trim(), bairro: v.bairro.trim(), cidade: v.cidade.trim(), uf: v.uf.trim().toUpperCase(), endereco: v.endereco.trim(), redes: v.redes.trim(), doc: v.doc.trim(), razao: v.razao.trim(), ie: v.ie.trim(), cep: v.cep.trim(), email: v.email.trim(), ciclo: +v.ciclo || null, proxContato: v.proxContato || null, indicadoPor: ind && ind.id !== id ? ind.id : null, obs: v.obs.trim(), atualizado: today(), atualizadoPor: me.email };
+    if ('dono' in v) d.dono = v.dono || null;
     if (id) { fire(updateDoc(pref(id), d), 'Ponto atualizado'); detail(id) }
-    else { const r = doc(collection(db, 'pdvs')); fire(setDoc(r, { ...d, hist: [], flags: [], criado: today(), criadoPor: me.email }), 'Ponto cadastrado'); dlg.close() }
+    else { const r = doc(collection(db, 'pdvs')); fire(setDoc(r, { ...d, hist: [], flags: [], criado: today(), criadoPor: me.email, criadoPorNome: me.nome }), 'Ponto cadastrado'); dlg.close() }
     return }
   if (t === 'ped') { const p = pdvs.get(f.dataset.pdv); if (!p) return toast('Escolha o ponto de venda.');
     const tv = f.dataset.t === 'v', its = (f._its || []).filter(i => +i.q > 0).map(i => ({ c: i.c, d: i.d, un: i.un || 'UN', ncm: i.ncm || '', q: +i.q, pu: +i.pu || 0 }));
@@ -542,7 +585,7 @@ document.addEventListener('submit', async e => {
     else { const up = { hist: arrayUnion(en), atualizado: today() }; let msg = tv ? 'Visita registrada' : 'Pedido salvo';
       if (!tv && p.status !== 'ativo') { up.status = 'ativo'; msg += `. ${p.nome} agora é Ativo` }
       fire(updateDoc(pref(p.id), up), msg) }
-    if (location.hash === '#novo') history.replaceState(null, '', '#repor');
+    if (location.hash === '#novo') history.replaceState(null, '', '#inicio');
     setTimeout(() => (!tv && !old) ? recibo(p.id, en.id) : detail(p.id), 30); return }
   if (t === 'bon') { fire(addDoc(collection(db, 'bonus'), { pdv: id, desc: v.desc.trim(), data: v.data || today(), por: me.email }), 'Bonificação registrada'); dlg.close() }
 });
@@ -572,6 +615,8 @@ document.addEventListener('click', e => {
   if (act === 'install') { installEvt?.prompt(); installEvt = null; return }
   if (act === 'per') { per = +v; return render() }
   if (act === 'rcid') { rcid = v; return render() }
+  if (act === 'ip') { ip = v; return render() }
+  if (act === 'iv') { iv = v; return render() }
   if (act === 'skip') { skip.add(id); return render() }
   if (act === 'unskip') { skip.clear(); return render() }
   if (act === 'recWa') { const p = pdvs.get(a.dataset.p), o = p.hist.find(x => x.id === id), d = String(p.contato).replace(/\D/g, ''); window.open(`https://wa.me/${d.length <= 11 ? '55' + d : d}?text=${encodeURIComponent(recTexto(p, o))}`, '_blank'); return }
