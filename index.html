@@ -2,7 +2,7 @@
 <html lang="pt-BR">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,interactive-widget=resizes-content">
 <title>PDVs Seda de Favela</title>
 <meta name="theme-color" content="#1e1e1e">
 <meta name="description" content="Pontos de venda, reposição, pedidos e bonificação da Seda de Favela.">
@@ -27,7 +27,17 @@
 --top:#1e1e1e;--acc:light-dark(#5b7400,#c8e62a);--sun:#c8e62a;--sunInk:#1e1e1e;--ok:light-dark(#1f6b4a,#5fcf9a);--soft:light-dark(#f7f7f3,#1b1b19);
 --safeT:env(safe-area-inset-top,0px);--safeB:env(safe-area-inset-bottom,0px)}
 *{box-sizing:border-box;min-width:0;-webkit-tap-highlight-color:transparent}
-html{-webkit-text-size-adjust:100%}
+html{-webkit-text-size-adjust:100%;overscroll-behavior:none}
+/* toque nativo: resposta no dedo, sem atraso, sem selecionar rótulo (skills mobile-native e emil-design-eng) */
+:root{--ease-out:cubic-bezier(.23,1,.32,1);--ease-drawer:cubic-bezier(.32,.72,0,1)}
+button,a,[role=button],[data-act],summary,label{touch-action:manipulation}
+button,[role=button],.chip,.tabs a,.kpi,.fab{user-select:none;-webkit-user-select:none;-webkit-touch-callout:none}
+.btn,.chip,button.kpi,.fab,.x,.lk,.nm{transition:transform 160ms var(--ease-out),background-color 160ms,box-shadow 160ms}
+.btn:active,.chip:active,button.kpi:active,.x:active,.lk:active{transform:scale(.97)}
+.fab:active{transform:scale(.94)}
+.rr[data-act],.tabs a{transition:background-color 120ms}
+.rr[data-act]:active,.tabs a:active,tbody tr[data-act]:active{background:var(--soft)}
+.capa h2{overflow-wrap:anywhere}
 body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.5 Barlow,system-ui,sans-serif;overflow-x:clip}
 h1,h2,h3,.num{font-family:"Barlow Condensed",Barlow,sans-serif;line-height:1.05;margin:0;text-wrap:balance}
 button,input,select,textarea{font:inherit;color:inherit}
@@ -106,7 +116,7 @@ h3 span{font:500 14px Barlow,system-ui,sans-serif;color:var(--mute)}
 table{width:100%;border-collapse:collapse;background:var(--card);border:1px solid var(--line);border-radius:14px;overflow:hidden}
 th{font-size:13px;color:var(--mute);text-align:left;font-weight:600;padding:10px 12px;border-bottom:1px solid var(--line);background:var(--soft)}
 td{padding:10px 12px;border-bottom:1px solid var(--line);vertical-align:top;font-size:15px}
-tbody tr[data-act]{cursor:pointer}tbody tr:hover{background:var(--soft)}
+tbody tr[data-act]{cursor:pointer}@media(hover:hover) and (pointer:fine){tbody tr:hover{background:var(--soft)}.btn:hover{filter:brightness(1.06)}.chip:hover{border-color:var(--mute)}}
 td.r,th.r{text-align:right;white-space:nowrap}
 .cols{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,340px),1fr));gap:16px}
 .rk{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px}
@@ -161,7 +171,7 @@ dialog::backdrop{background:#0008}
 .hist{list-style:none;margin:0;padding:0}
 .hist li{display:flex;gap:10px;align-items:center;justify-content:space-between;padding:9px 0;border-bottom:1px solid var(--line);font-size:15px;flex-wrap:wrap}
 .lk{background:none;border:0;color:var(--acc);font-weight:600;cursor:pointer;padding:4px 6px;min-height:40px}
-#toast{position:fixed;left:50%;bottom:calc(20px + var(--safeB));transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:12px 16px;border-radius:12px;display:none;gap:12px;align-items:center;z-index:60;max-width:calc(100% - 24px);box-shadow:0 8px 30px #0005}
+#toast{position:fixed;left:50%;bottom:calc(20px + var(--safeB));transform:translate(-50%,14px);opacity:0;visibility:hidden;pointer-events:none;transition:transform 300ms var(--ease-out),opacity 200ms,visibility 0s 300ms;background:var(--ink);color:var(--bg);padding:12px 16px;border-radius:12px;display:flex;gap:12px;align-items:center;z-index:60;max-width:calc(100% - 24px);box-shadow:0 8px 30px #0005}
 #toast button{background:var(--sun);color:var(--sunInk);border:0;border-radius:8px;padding:6px 12px;font-weight:700;cursor:pointer;min-height:36px}
 .menu{display:grid;gap:8px;max-width:520px}
 .menu a,.menu button{display:flex;justify-content:space-between;align-items:center;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px;min-height:56px;text-decoration:none;color:var(--ink);font-weight:700;cursor:pointer;width:100%;text-align:left}
@@ -196,7 +206,7 @@ dialog::backdrop{background:#0008}
 .capa h2{font-size:clamp(38px,6vw,60px);color:var(--sun);margin:2px 0 6px}
 .cta{display:flex;flex-direction:column;gap:10px;position:relative;z-index:1}
 .mega{background:var(--sun);color:var(--sunInk);min-height:76px;border-radius:16px;padding:0 22px 0 14px;justify-content:flex-start;gap:14px;font:800 24px/1.05 "Barlow Condensed",Barlow,system-ui,sans-serif;text-align:left;box-shadow:0 6px 0 #8fa61b;white-space:normal}
-.mega:active{transform:translateY(3px);box-shadow:0 3px 0 #8fa61b}
+.btn.mega:active{transform:translateY(3px);box-shadow:0 3px 0 #8fa61b}
 .mega .plus{display:grid;place-items:center;width:50px;height:50px;border-radius:12px;background:var(--sunInk);color:var(--sun);font-size:36px;flex:none}
 .mega small{display:block;font:600 13px Barlow,system-ui,sans-serif;opacity:.75;margin-top:3px}
 .mega2{background:transparent;color:#f1f1ec;border-color:#ffffff40;min-height:52px}
@@ -211,6 +221,11 @@ dialog::backdrop{background:#0008}
 .met.alt{background:light-dark(#1e1e1e,#2a2a27);color:#f1f1ec;border-color:transparent}
 .met.alt small,.met.alt em{color:#f1f1ec;opacity:.85}.met.alt .num{color:var(--sun)}
 .rr.me .n{color:var(--acc)}
+#toast.on{transform:translate(-50%,0);opacity:1;visibility:visible;pointer-events:auto;transition:transform 300ms var(--ease-out),opacity 200ms,visibility 0s}
+/* janela: sobe do pé no celular (como folha nativa), cresce sutil no computador; só na entrada */
+dialog[open]{animation:dlgIn 220ms var(--ease-out)}dialog[open]::backdrop{animation:fade 200ms ease}
+@keyframes dlgIn{from{opacity:0;transform:scale(.96)}}@keyframes fade{from{opacity:0}}
+@keyframes up{from{opacity:0;transform:translateY(8px)}}
 pre,.scroll{overflow-x:auto}
 @media(max-width:900px){.kpis{grid-template-columns:repeat(3,minmax(0,1fr))}.tiers{grid-template-columns:repeat(2,minmax(0,1fr))}.hero{grid-template-columns:minmax(0,1fr)}}
 @media(max-width:760px){
@@ -229,11 +244,14 @@ pre,.scroll{overflow-x:auto}
  #toast{bottom:calc(150px + var(--safeB))}
  dialog{width:100%;max-width:100%;height:100dvh;max-height:100dvh;border-radius:0;margin:0}
  .dh{padding-top:calc(14px + var(--safeT))}
+ dialog[open]{animation:sheetIn 340ms var(--ease-drawer)}@keyframes sheetIn{from{transform:translateY(100%)}}
+ .db{overscroll-behavior:contain}
  .f{grid-template-columns:minmax(0,1fr)}.stats{grid-template-columns:repeat(2,minmax(0,1fr))}
  .card .cb .btn{flex:1}
  table{font-size:13px}.stack thead{display:none}.stack tr{display:grid;padding-block:10px}.stack td{display:flow-root;border:0;padding:3px 12px;padding-inline-start:8.5em;text-align:start}.stack td::before{content:attr(data-l);float:inline-start;width:7.5em;margin-inline-start:-8em;white-space:normal;color:var(--mute);font-size:12px}.stack td:empty{display:none}.stack td:first-child{padding-inline-start:12px;font-size:16px}.stack td:first-child::before{display:none}
 }
-@media(prefers-reduced-motion:no-preference){.card,.rk,.tc{animation:up .25s ease-out both}@keyframes up{from{opacity:0;transform:translateY(6px)}}}
+@media(prefers-reduced-motion:no-preference){.first .capa,.first .met{animation:up 320ms var(--ease-out) both}.first .met{animation-delay:60ms}.first .met.alt{animation-delay:100ms}}
+@media(prefers-reduced-motion:reduce){*,::backdrop{animation:none!important;transition-duration:0s!important}}
 </style>
 <script>new MutationObserver(()=>{for(const c of document.querySelectorAll('.stack td:not([data-l])')){let i=0,p=c;while(p=p.previousElementSibling)i+=p.colSpan;c.dataset.l=c.closest('table').rows[0].cells[i]?.textContent||''}}).observe(document,{childList:true,subtree:true})</script>
 </head>

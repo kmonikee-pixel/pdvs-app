@@ -382,7 +382,7 @@ function vInicio() {
 const V = { inicio: vInicio, notas: vNotas, repor: vRepor, pontos: vPontos, ranking: vRanking, bonus: vBonus, triagem: vTriagem, equipe: vEquipe, ajustes: vAjustes, mais: vMais };
 const cur = () => { const h = location.hash.slice(1); return V[h] ? h : 'inicio' };
 function render() {
-  if (!me || $('#app').hidden) return; derive(); kpis(); const v = cur(); document.body.classList.toggle('v-inicio', v === 'inicio');
+  if (!me || $('#app').hidden) return; derive(); kpis(); const v = cur(); document.body.classList.toggle('v-inicio', v === 'inicio'); if (v === 'inicio' && !render.f) { render.f = 1; document.body.classList.add('first'); setTimeout(() => document.body.classList.remove('first'), 700) }
   const sub = ['ranking', 'triagem', 'equipe', 'ajustes', 'mais', 'notas'].includes(v);
   document.querySelectorAll('#tabs a').forEach(a => { const h = a.getAttribute('href'); a.classList.toggle('on', h === '#' + v || (sub && h === '#mais')) });
   const ae = document.activeElement, id = ae?.id, pos = ae?.selectionStart;
@@ -544,8 +544,8 @@ function bonForm(id) { const p = pdvs.get(id), s = M.get(id); openId = null;
   <div class="fa w"><button type="button" class="btn line" data-act="close">Cancelar</button><button class="btn ink">Registrar</button></div></form>`) }
 
 /* ---------- gravação ---------- */
-function toast(m, u) { $('#tMsg').textContent = m; const b = $('#tBtn'); undo = u || null; b.hidden = !u; const t = $('#toast'); t.style.display = 'flex'; clearTimeout(toast.t); toast.t = setTimeout(() => { t.style.display = 'none'; undo = null }, u ? 7000 : 3200) }
-$('#tBtn').onclick = () => { const u = undo; $('#toast').style.display = 'none'; undo = null; if (u) u() };
+function toast(m, u) { $('#tMsg').textContent = m; const b = $('#tBtn'); undo = u || null; b.hidden = !u; const t = $('#toast'); t.classList.add('on'); clearTimeout(toast.t); toast.t = setTimeout(() => { t.classList.remove('on'); undo = null }, u ? 7000 : 3200) }
+$('#tBtn').onclick = () => { const u = undo; $('#toast').classList.remove('on'); undo = null; if (u) u() };
 const errMsg = e => e?.code === 'permission-denied' ? 'Sem permissão para essa alteração. Ela foi desfeita.' : 'Não salvou (' + (e?.code || 'erro') + '). Tente de novo.';
 // Não espera o servidor: sem sinal, a promessa só resolve quando a conexão voltar. A tela já mostra a mudança na hora.
 function fire(p, ok) { p.catch(e => toast(errMsg(e))); if (ok) toast(ok + (navigator.onLine ? '' : ' Sobe quando tiver sinal.')) }
