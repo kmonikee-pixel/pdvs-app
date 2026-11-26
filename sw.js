@@ -1,8 +1,8 @@
 // Service worker: deixa o app abrir sem internet.
 // Os dados offline ficam no cache do Firestore (IndexedDB); aqui só guardamos as telas e bibliotecas.
-const V = 'pdvs-v1';
+const V = 'pdvs-v2';
 const SHELL = ['./', './index.html', './app.js', './config.js', './manifest.webmanifest',
-  './icon-192.png', './icon-512.png', './icon-maskable-512.png', './apple-touch-icon.png', './favicon-32.png'];
+  './icon-192.png', './icon-512.png', './icon-maskable-512.png', './apple-touch-icon.png', './favicon-32.png', './logo.png'];
 const FB = '10.14.1';
 const LIBS = ['app', 'auth', 'firestore'].map(m => `https://www.gstatic.com/firebasejs/${FB}/firebase-${m}.js`);
 
