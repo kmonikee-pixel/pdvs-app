@@ -24,7 +24,7 @@ const DEFV = { a: 1, b: 15, c: 3, d: 1, niveis: [
   { nome: 'Firme', min: 60, premio: 'Bônus de R$ 50' },
   { nome: 'Brabo', min: 150, premio: 'Bônus de R$ 150' },
   { nome: 'Lenda', min: 300, premio: 'Bônus de R$ 300 e destaque no Instagram da marca' }] };
-const EMP_PADRAO = { fantasia: 'Seda de Favela', razao: '', doc: '41.048.258/0001-45', ie: '15.157.07-0', endereco: 'Rua Mário Marrocos, 56', bairro: 'Pião', cidade: 'São Gonçalo', uf: 'RJ', cep: '24455-520', tel: '(21) 99777-4435', email: 'sedadefavela@gmail.com', site: 'sedadefavela.com.br', insta: '@sedadefavela', pix: '', rodape: '' };
+const EMP_PADRAO = { fantasia: 'Seda de Favela', razao: '', doc: '41.048.258/0001-45', ie: '15.157.07-0', endereco: 'Rua Mário Marrocos, 56', bairro: 'Pião', cidade: 'São Gonçalo', uf: 'RJ', cep: '24455-520', tel: '(21) 99777-4435', email: 'sedadefavela@gmail.com', site: 'sedadefavela.com.br', insta: '@sedadefavela', pix: '41048258000145', pixTipo: 'CNPJ', banco: 'PicPay', rodape: '' };
 const DEFC = { niveis: [
   { nome: 'Parceiro', med: 0, meses: 0, pont: 0, ben: 'Preço de tabela e visita no ciclo de reposição' },
   { nome: 'Parceiro Fiel', med: 3, meses: 2, pont: 80, ben: '1 piteira de papel de brinde a cada 5 displays no pedido' },
@@ -334,6 +334,11 @@ function csvNF() { const q = x => `"${String(x ?? '').replace(/"/g, '""')}"`, e 
 
 function vAjustes() { const n = cfg.niveis, ad = can.admin();
   return `<h2>Ajustes</h2><p class="lead">${ad ? 'Valem para toda a equipe.' : 'Só a administradora altera as regras.'}</p>
+  ${ad ? `<h3 id="empresa">Dados da empresa e PIX <span>saem no comprovante e no lembrete de pagamento</span></h3>
+  <form id="empF" class="f card" style="padding:20px">${[['fantasia', 'Nome no comprovante'], ['pix', 'Chave PIX'], ['pixTipo', 'Tipo da chave (CNPJ, e-mail, celular, aleatória)'], ['banco', 'Banco da chave'], ['razao', 'Razão social (opcional)', 'w'], ['doc', 'CNPJ'], ['ie', 'Inscrição estadual'], ['endereco', 'Endereço com número', 'w'], ['bairro', 'Bairro'], ['cidade', 'Cidade'], ['uf', 'UF'], ['cep', 'CEP'], ['tel', 'Telefone / WhatsApp'], ['email', 'E-mail'], ['insta', 'Instagram'], ['site', 'Site'], ['rodape', 'Texto do rodapé do comprovante', 'w']].map(([k, l, w]) => `<label class="${w || ''}">${l}<input name="${k}" value="${esc(emp()[k])}"></label>`).join('')}
+  <label class="w" style="flex-direction:row;gap:10px;align-items:center"><input type="checkbox" name="controlaNF" ${cfg.controlaNF === false ? '' : 'checked'} style="width:22px;min-height:22px"> Controlar emissão de NF-e em cada pedido</label>
+  <div class="fa w"><button class="btn ink">Salvar dados da empresa</button></div></form>` : ''}
+  <h3>Regras</h3>
   <form id="cfgF" class="f card" style="padding:20px"><fieldset ${ad ? '' : 'disabled'} style="display:contents">
   <label>Unidade de venda<input name="unidade" value="${esc(cfg.unidade)}" required></label>
   <label>Preço por ${esc(U())} (R$)<input name="preco" type="number" step="0.01" min="0" value="${+cfg.preco}"></label>
@@ -347,10 +352,7 @@ function vAjustes() { const n = cfg.niveis, ad = can.admin();
   <label>Bônus fica retido se tiver cobrança vencida há mais de (dias)<input name="mtrava" type="number" min="0" value="${+cfg.meta.travaDias}"></label>
   ${cfg.meta.niveis.map((t, i) => `<label>Nível ${i + 1}<input name="vn${i}" value="${esc(t.nome)}" required></label><label>A partir de (${esc(U())}s no mês)<input name="vm${i}" type="number" min="0" value="${+t.min}" ${i ? '' : 'readonly'}></label><label class="w">Prêmio<input name="vp${i}" value="${esc(t.premio)}"></label>`).join('')}
   ${ad ? '<div class="fa w"><button class="btn ink">Salvar ajustes</button></div>' : ''}</fieldset></form>
-  ${ad ? `<h3>Dados da empresa (saem no comprovante e na nota)</h3>
-  <form id="empF" class="f card" style="padding:20px">${[['fantasia', 'Nome no comprovante'], ['pix', 'Chave PIX (vai no comprovante e no lembrete)'], ['razao', 'Razão social (opcional)', 'w'], ['doc', 'CNPJ'], ['ie', 'Inscrição estadual'], ['endereco', 'Endereço com número', 'w'], ['bairro', 'Bairro'], ['cidade', 'Cidade'], ['uf', 'UF'], ['cep', 'CEP'], ['tel', 'Telefone / WhatsApp'], ['email', 'E-mail'], ['insta', 'Instagram'], ['site', 'Site'], ['rodape', 'Texto do rodapé do comprovante', 'w']].map(([k, l, w]) => `<label class="${w || ''}">${l}<input name="${k}" value="${esc(emp()[k])}"></label>`).join('')}
-  <label class="w" style="flex-direction:row;gap:10px;align-items:center"><input type="checkbox" name="controlaNF" ${cfg.controlaNF === false ? '' : 'checked'} style="width:22px;min-height:22px"> Controlar emissão de NF-e em cada pedido</label>
-  <div class="fa w"><button class="btn ink">Salvar dados da empresa</button></div></form>
+  ${ad ? `
   <h3>Produtos</h3><p class="lead">${produtos().length} produtos cadastrados. <a class="lk" href="#produtos">Abrir a lista de produtos</a></p>` : ''}
   <h3>Exportar</h3><div class="cb"><button class="btn ink" data-act="xlsx">Planilha completa (Excel)</button><button class="btn line" data-act="csv" data-v="pdv">Baixar pontos (.csv)</button><button class="btn line" data-act="csv" data-v="ped">Baixar pedidos e visitas (.csv)</button></div>
   ${ad ? `<h3>Importar do painel antigo</h3><p class="lead">Use uma vez, com internet, com o arquivo pdvs-importacao.json. Pontos que já existem recebem só o histórico que faltar; nada é apagado.</p><label class="btn line" style="width:fit-content">Escolher arquivo<input type="file" id="impF" accept=".json,application/json" hidden></label><p class="pl" id="impMsg">${esc(impTxt)}</p>` : ''}` }
@@ -386,7 +388,7 @@ function lembreteTexto(o) { const p = pdvs.get(o.pdv), e = emp(), d = diasPara(o
   const pr = (p?.contato && p?.resp) ? p.resp : (p?.nome || '');
   const blocos = [`Oi${pr ? ', ' + pr : ''}! Aqui é da *${e.fantasia}*.`,
     `Passando pra lembrar que o pagamento do pedido *${o.n || o.id}*, deixado aí em ${brD(o.d)}, ${quando}.` + (its.length ? '\n' + its.map(i => `• ${nf(i.q)} ${i.un || ''} ${i.d}`).join('\n') : '') + `\n*Valor: ${brl(o.v)}*`,
-    e.pix ? `*Pague por PIX*\nChave: ${e.pix}\nFavorecido: ${e.fantasia}${e.razao ? ' (' + e.razao + ')' : ''}\nCNPJ: ${e.doc}` : `Favorecido: ${e.fantasia} · CNPJ: ${e.doc}`,
+    e.pix ? `*Pague por PIX*\nChave PIX (${e.pixTipo || 'chave'}): ${e.pix}${e.banco ? '\nBanco: ' + e.banco : ''}\nFavorecido: ${e.fantasia}${e.razao ? ' (' + e.razao + ')' : ''}\nCNPJ: ${e.doc}` : `Favorecido: ${e.fantasia} · CNPJ: ${e.doc}`,
     `Assim que pagar, manda o comprovante por aqui. Obrigado pela parceria!\n${e.fantasia} · ${e.tel}`];
   return blocos.join('\n\n') }
 function waLink(p, msg) { const d = String(p?.contato || '').replace(/\D/g, ''); if (d.length < 10) return ''; return `https://wa.me/${d.length <= 11 ? '55' + d : d}?text=${encodeURIComponent(msg)}` }
@@ -399,9 +401,25 @@ function vCobrar() { const l = receber().sort((a, b) => (a.venc || '9') < (b.ven
   const G = [['Atrasados', l.filter(o => diasPara(o) !== null && diasPara(o) < 0)], ['Vence hoje', l.filter(o => diasPara(o) === 0)], ['Vence amanhã', l.filter(o => diasPara(o) === 1)], ['Próximos 7 dias', l.filter(o => diasPara(o) > 1 && diasPara(o) <= 7)], ['Depois', l.filter(o => diasPara(o) === null || diasPara(o) > 7)]];
   const tot = l.reduce((a, o) => a + (+o.v || 0), 0), atr = G[0][1].reduce((a, o) => a + (+o.v || 0), 0);
   return `<h2>Cobranças</h2><p class="lead">Mercadoria deixada a prazo. Na véspera e no dia do vencimento, toque em <b>Lembrete no WhatsApp</b>: a mensagem já sai pronta com valor, PIX e CNPJ. Quando o ponto pagar, toque em <b>Recebi</b>.</p>
-  ${!e.pix ? `<div class="flag" style="margin-bottom:14px">Falta a chave PIX da empresa. ${can.admin() ? '<a class="lk" href="#ajustes">Cadastrar em Ajustes</a>' : 'Peça para a administradora cadastrar.'} Sem ela, o lembrete sai só com o CNPJ.</div>` : ''}
+  ${!e.pix ? `<div class="flag" style="margin-bottom:14px">Falta a chave PIX da empresa. ${can.admin() ? '<a class="lk" href="#ajustes">Cadastrar em Ajustes (primeiro quadro)</a>' : 'Peça para a administradora cadastrar.'} Sem ela, o lembrete sai só com o CNPJ.</div>` : ''}
   <div class="mets m3"><div class="met"><span class="num">${brl(tot)}</span><small>a receber${g ? '' : ' dos seus pedidos'}</small></div><div class="met"><span class="num" style="color:${atr ? 'var(--brick)' : 'inherit'}">${brl(atr)}</span><small>atrasado</small></div><div class="met"><span class="num">${G[1][1].length + G[2][1].length}</span><small>lembretes pra mandar hoje</small></div></div>
   ${l.length ? G.filter(([, x]) => x.length).map(([t, x]) => `<h3>${t} <span>${x.length} · ${brl(x.reduce((a, o) => a + (+o.v || 0), 0))}</span></h3><div class="grid">${x.map(o => cobItem(o, g)).join('')}</div>`).join('') : '<div class="empty">Nada a receber. Tudo em dia.</div>'}` }
+
+/* ---------- ranking e movimento da equipe (todos veem; sem mostrar os pontos dos outros) ---------- */
+const quando = o => { if (o.em) { const m = Math.round((Date.now() - o.em) / 6e4); if (m < 60) return m <= 1 ? 'agora' : `há ${m} min`; if (m < 24 * 60) return `há ${Math.round(m / 60)} h` } const d = D(today()) - D(o.d); return d === 0 ? 'hoje' : d === 1 ? 'ontem' : `há ${d} dias` };
+function rankEquipe() { const ym = ymDe('mes'), r = new Map(), add = (e, k, n) => { if (!e) return; const x = r.get(e) || { q: 0, n: 0, c: 0 }; x[k] += n; r.set(e, x) };
+  peds.filter(o => o.d.startsWith(ym) && o.por).forEach(o => { add(o.por, 'q', +o.q || 0); add(o.por, 'n', 1) });
+  [...pdvs.values()].forEach(p => { const c = conquistador(p); if (c && p.status !== 'fechou' && conqD(p).startsWith(ym)) add(c, 'c', 1) });
+  const l = [...r].sort((a, b) => b[1].q - a[1].q || b[1].c - a[1].c), mx = Math.max(1, ...l.map(x => x[1].q)), pos = l.findIndex(x => x[0] === me.email);
+  const ev = [...peds.filter(o => o.por).map(o => ({ e: o.por, nm: o.pn, d: o.d, em: o.em, t: `vendeu ${nf(o.q)} ${Us(+o.q)}` })),
+    ...[...pdvs.values()].filter(p => p.criadoPor && p.criado).map(p => ({ e: p.criadoPor, nm: p.criadoPorNome, d: p.criado, em: 0, t: p.status === 'prospeccao' ? 'cadastrou um ponto em prospecção' : 'conquistou um ponto novo' }))]
+    .sort((a, b) => a.d < b.d ? 1 : a.d > b.d ? -1 : (b.em || 0) - (a.em || 0)).slice(0, 20);
+  const medal = i => i === 0 ? '1º' : i === 1 ? '2º' : i === 2 ? '3º' : (i + 1) + 'º';
+  return `<div class="cols" style="margin-top:12px">
+   <div class="rk"><h3>Ranking da equipe <span>${esc(nomeMes(ym))}</span></h3>${pos >= 0 ? `<p class="pl" style="margin:-4px 0 8px">Você está em <b>${pos + 1}º</b> de ${l.length}.${pos > 0 ? ` Faltam ${nf(l[pos - 1][1].q - l[pos][1].q + 1)} ${esc(Us(2))} pra passar ${esc(nomeDe(l[pos - 1][0]).split(' ')[0])}.` : ' Segura a liderança.'}</p>` : ''}
+    ${l.length ? `<div class="scrollbox">${l.map(([e, x], i) => `<div class="rr ${e === me.email ? 'me' : ''}" style="cursor:default"><i class="${i < 3 ? 'pod' : ''}">${medal(i)}</i><span class="n">${esc(nomeDe(e))}${e === me.email ? ' (você)' : ''}</span><span class="v">${nf(x.q)} ${esc(Us(x.q))}</span><div class="tr"><div style="width:${(x.q / mx * 100).toFixed(0)}%"></div></div><span class="pl" style="grid-column:2/4">${x.n} ${x.n === 1 ? 'venda' : 'vendas'} · ${x.c} ${x.c === 1 ? 'ponto novo' : 'pontos novos'}</span></div>`).join('')}</div>` : '<p class="pl">Ninguém vendeu este mês ainda. Sai na frente!</p>'}</div>
+   <div class="rk"><h3>Movimento da equipe</h3>${ev.length ? `<div class="scrollbox">${ev.map(x => `<div class="fd"><div><b>${esc((x.e === me.email ? 'Você' : nomeDe(x.e)).split(' ')[0])}</b> ${esc(x.t)}</div><span class="pl" style="flex:none">${esc(quando(x))}</span></div>`).join('')}</div>` : '<p class="pl">Sem movimento ainda.</p>'}</div>
+  </div>` }
 
 /* ---------- início: uma tela para cada papel ---------- */
 function vInicio() { if (!can.gest()) return vVendedor(); if (can.dono()) return `<div class="chips switch"><button class="chip ${iv !== 'eu' ? 'on' : ''}" data-act="iv" data-v="emp">Empresa</button><button class="chip ${iv === 'eu' ? 'on' : ''}" data-act="iv" data-v="eu">Minhas vendas</button></div>` + (iv === 'eu' ? vVendedor() : vPainel()); return vPainel() }
@@ -417,6 +435,7 @@ function vVendedor() { const pn = (me.nome || '').split(' ')[0], h0 = new Date()
   ${cob.length ? `<h3>Cobrar hoje <span>${cob.length}</span></h3><div class="grid">${cob.map(o => cobItem(o, false)).join('')}</div>` : ''}
   <div class="bvcard"><div><span class="pl">Sua meta de ${esc(nomeMes(ymDe('mes')))}</span><div class="bvl">${tierV(bv.nv)}<b>${nf(bv.pts)}</b><span>${esc(Us(bv.pts))} vendidas e pagas</span></div><div class="pl">${progV(bv)}</div>${bv.trava ? `<div class="pl" style="color:var(--brick)">Bônus retido até receber as cobranças atrasadas.</div>` : ''}</div><div class="bvp"><small>bônus do nível</small><b>${esc(cfg.meta.niveis[bv.nv].premio)}</b>${bv.nx ? `<small>próximo: ${esc(bv.nx.premio)}</small>` : ''}</div></div>
   ${k.n ? `<div class="bvcard carga"><div><span class="pl">Mercadoria com você</span><div class="bvl"><b>${nf(k.com)}</b><span>${esc(Us(k.com))} na mão</span></div><div class="pl">Pegou ${nf(k.ent)} · vendeu ${nf(k.vend)} · devolveu ${nf(k.dev)}</div></div><div class="bvr ${k.aPagar > 0 ? 'venc' : ''}"><small>falta acertar com a empresa</small><b>${brl(Math.max(0, k.aPagar))}</b></div></div>` : ''}
+  ${rankEquipe()}
   <div class="cols" style="margin-top:12px">
    <div class="rk"><h3>Seus pontos <span>${meus.length}</span></h3>
     <div class="chips" style="margin-bottom:8px">${[['ativo', 'Ativos'], ['prospeccao', 'Prospecção'], ['todos', 'Todos']].map(([kk, t]) => `<button class="chip sm ${ilf === kk ? 'on' : ''}" data-act="ilf" data-v="${kk}">${t} ${kk === 'todos' ? meus.length : meus.filter(p => p.status === kk).length}</button>`).join('')}</div>
@@ -743,7 +762,7 @@ function recHTML(p, o) { const e = emp(), its = itensDe(o), sub = subtotal(o), n
   <table class="rt"><thead><tr><th>Produto</th><th class="r">Qtd</th><th class="r">Unit.</th><th class="r">Total</th></tr></thead><tbody>${its.map(i => `<tr><td>${esc(i.d)}<small>${esc(i.c || '')}</small></td><td class="r">${nf(i.q)} ${esc(i.un || '')}</td><td class="r">${brl(i.pu)}</td><td class="r">${brl(i.q * i.pu)}</td></tr>`).join('')}</tbody></table>
   <div class="rs">${o.ds ? `<div><span>Subtotal</span>${brl(sub)}</div><div><span>Desconto</span>- ${brl(o.ds)}</div>` : ''}<div class="big"><span>Total</span>${brl(o.v)}</div></div>
   <div class="rb"><h4>Pagamento</h4>${L('Condição', condPg(o))}${L('Forma', o.fp)}${L('Situação', aberto ? 'Em aberto' : 'Pago')}</div>
-  ${aberto ? `<div class="rpix"><b>Pague por PIX até ${o.venc ? brD(o.venc) : 'o vencimento'}</b>${e.pix ? `<div>Chave PIX: <b>${esc(e.pix)}</b></div>` : ''}<div>Favorecido: ${esc(e.fantasia)}${e.razao ? ' · ' + esc(e.razao) : ''}</div><div>CNPJ: ${esc(e.doc)}</div></div>` : ''}
+  ${aberto ? `<div class="rpix"><b>Pague por PIX até ${o.venc ? brD(o.venc) : 'o vencimento'}</b>${e.pix ? `<div>Chave PIX (${esc(e.pixTipo || 'chave')}): <b>${esc(e.pix)}</b>${e.banco ? ' · ' + esc(e.banco) : ''}</div>` : ''}<div>Favorecido: ${esc(e.fantasia)}${e.razao ? ' · ' + esc(e.razao) : ''}</div><div>CNPJ: ${esc(e.doc)}</div></div>` : ''}
   ${o.o ? `<div class="rb"><h4>Observação</h4><div>${esc(o.o)}</div></div>` : ''}
   <div class="rsig"><div>Recebi a mercadoria acima</div><div class="ln"></div><div class="pl">Nome e assinatura de quem recebeu</div></div>
   <div class="rf">${nfo ? `Nota fiscal: ${nfo.st === 'emitida' ? 'emitida nº ' + esc(nfo.num || '') : 'será emitida e enviada separadamente'}. ` : ''}${esc(e.rodape || 'Este comprovante é um documento de controle da venda e não substitui a nota fiscal.')}<br>${esc([e.insta, e.site].filter(Boolean).join(' · '))}</div></div>` }
@@ -754,7 +773,7 @@ function recibo(pid, oid) { const p = pdvs.get(pid), o = (p?.hist || []).find(x 
   <div class="cb noprint" style="margin-top:14px"><button class="btn sun" data-act="recShare" data-p="${esc(pid)}" data-id="${esc(oid)}">Enviar imagem</button>${dg.length >= 10 ? `<button class="btn line" data-act="recWa" data-p="${esc(pid)}" data-id="${esc(oid)}">WhatsApp (texto)</button>` : ''}<button class="btn line" data-act="recPrint">Imprimir / PDF</button>${o.nf && o.nf.st !== 'emitida' ? `<button class="btn line" data-act="notaCopy" data-p="${esc(pid)}" data-id="${esc(oid)}">Copiar dados p/ nota</button>` : ''}<button class="btn line" data-act="open" data-id="${esc(pid)}">Ver ponto</button></div>`) }
 function recTexto(p, o) { const e = emp(), its = itensDe(o), ab = o.pg === 'receber';
   return [`*COMPROVANTE DE VENDA · ${e.fantasia}*`, `Pedido nº ${o.n || o.id} · ${brD(o.d)}`, `CNPJ ${e.doc}${e.ie ? ' · IE ' + e.ie : ''}`, `${e.tel}`, '', `*Cliente:* ${p.razao || p.nome}${p.doc ? ' · ' + p.doc : ''}`, '', ...its.map(i => `• ${nf(i.q)} ${i.un || ''} ${i.d} x ${brl(i.pu)} = ${brl(i.q * i.pu)}`), o.ds ? `Desconto: - ${brl(o.ds)}` : '', `*Total: ${brl(o.v)}*`, '',
-    `Condição: ${condPg(o)}`, `Forma: ${o.fp || ''}`, ab ? `\n*Pagamento por PIX até ${o.venc ? brD(o.venc) : 'o vencimento'}*${e.pix ? `\nChave: ${e.pix}` : ''}\nFavorecido: ${e.fantasia} · CNPJ ${e.doc}` : 'Situação: pago', '', `Vendedor: ${o.pn || ''}`, '_Comprovante de controle da venda. Não substitui a nota fiscal._'].filter(x => x !== '').join('\n') }
+    `Condição: ${condPg(o)}`, `Forma: ${o.fp || ''}`, ab ? `\n*Pagamento por PIX até ${o.venc ? brD(o.venc) : 'o vencimento'}*${e.pix ? `\nChave PIX (${e.pixTipo || 'chave'}): ${e.pix}${e.banco ? ' · ' + e.banco : ''}` : ''}\nFavorecido: ${e.fantasia} · CNPJ ${e.doc}` : 'Situação: pago', '', `Vendedor: ${o.pn || ''}`, '_Comprovante de controle da venda. Não substitui a nota fiscal._'].filter(x => x !== '').join('\n') }
 function notaTexto(p, o) { const its = itensDe(o), L = [];
   L.push('DESTINATÁRIO', `CNPJ/CPF: ${p.doc || '(falta)'}`, `Nome/Razão social: ${p.razao || p.nome}`, `Inscrição estadual: ${p.ie || 'Isento/não contribuinte'}`, `Endereço: ${p.endereco || '(falta)'}`, `Bairro: ${p.bairro || ''}`, `CEP: ${p.cep || '(falta)'}`, `Município/UF: ${p.cidade || ''}/${p.uf || ''}`, `Telefone: ${p.contato || ''}`, `E-mail: ${p.email || ''}`, '', 'PRODUTOS');
   its.forEach((i, k) => L.push(`${k + 1}) ${i.d}`, `   Código: ${i.c || ''} · NCM: ${i.ncm || ''} · Unidade: ${i.un || ''}`, `   Quantidade: ${String(i.q).replace('.', ',')} · Valor unitário: ${(+i.pu).toFixed(2).replace('.', ',')} · Valor total: ${(i.q * i.pu).toFixed(2).replace('.', ',')}`));
@@ -770,7 +789,7 @@ async function recImagem(p, o) {
   its.forEach(i => { T(i.d, '600 28px Barlow', '#1a1714', 'left', 2); T(`${nf(i.q)} ${i.un || ''} x ${brl(i.pu)} = ${brl(i.q * i.pu)}`, '400 26px Barlow', '#1a1714', 'left', 14) });
   if (o.ds) T('Desconto: - ' + brl(o.ds), '400 26px Barlow');
   T('TOTAL ' + brl(o.v), '800 52px "Barlow Condensed"', '#1a1714', 'left', 20);
-  T('Condição: ' + condPg(o) + (o.fp ? '  ·  ' + o.fp : ''), '600 26px Barlow'); if (o.pg === 'receber') { T('PAGUE POR PIX ATÉ ' + (o.venc ? brD(o.venc) : 'O VENCIMENTO'), '700 28px Barlow', '#8a0b0b', 'left', 4); if (e.pix) T('Chave PIX: ' + e.pix, '600 26px Barlow'); T('Favorecido: ' + e.fantasia + ' · CNPJ ' + e.doc, '400 24px Barlow', '#1a1714', 'left', 14) }
+  T('Condição: ' + condPg(o) + (o.fp ? '  ·  ' + o.fp : ''), '600 26px Barlow'); if (o.pg === 'receber') { T('PAGUE POR PIX ATÉ ' + (o.venc ? brD(o.venc) : 'O VENCIMENTO'), '700 28px Barlow', '#8a0b0b', 'left', 4); if (e.pix) T(`Chave PIX (${e.pixTipo || 'chave'}): ${e.pix}${e.banco ? ' · ' + e.banco : ''}`, '600 26px Barlow'); T('Favorecido: ' + e.fantasia + ' · CNPJ ' + e.doc, '400 24px Barlow', '#1a1714', 'left', 14) }
   T('Vendedor: ' + (o.pn || ''), '400 24px Barlow', '#1a1714', 'left', 28); T('Comprovante de controle da venda. Não substitui a nota fiscal.', 'italic 400 22px Barlow', '#8a8178');
   let h = P + 200; x.font = '10px Barlow'; for (const r of rows) h += parseInt(r.f.match(/(\d+)px/)[1]) * 1.25 + r.gap; c.width = W; c.height = h + P;
   x.fillStyle = '#fff'; x.fillRect(0, 0, W, c.height); x.fillStyle = '#8a0b0b'; x.fillRect(0, 0, W, 14);
@@ -808,7 +827,7 @@ document.addEventListener('submit', async e => {
   if (f.id === 'prodF2') { const l = clone(produtos()), k = f.dataset.k, p = { c: v.c.trim().toUpperCase(), d: v.d.trim(), cat: (v.cat || '').trim() || 'Produtos', un: (v.un || 'UN').trim().toUpperCase(), p: +v.p || 0, sug: +v.sug || 0, ncm: (v.ncm || '').trim(), f: v.f === '' ? 1 : +v.f, ativo: !!v.ativo, foto: (v.foto || '').trim() };
     if (l.some((x, i) => x.c === p.c && String(i) !== k)) return toast('Já existe um produto com esse código.');
     if (k === '') l.push(p); else l[+k] = p; dlg.close(); return fire(setDoc(doc(db, 'config', 'geral'), { ...cfg, produtos: l }), 'Produto salvo') }
-  if (f.id === 'empF') { const e = {}; for (const k of ['fantasia', 'razao', 'doc', 'ie', 'endereco', 'bairro', 'cidade', 'uf', 'cep', 'tel', 'email', 'pix', 'insta', 'site', 'rodape']) e[k] = (v[k] || '').trim(); e.uf = e.uf.toUpperCase();
+  if (f.id === 'empF') { const e = {}; for (const k of ['fantasia', 'pixTipo', 'banco', 'razao', 'doc', 'ie', 'endereco', 'bairro', 'cidade', 'uf', 'cep', 'tel', 'email', 'pix', 'insta', 'site', 'rodape']) e[k] = (v[k] || '').trim(); e.uf = e.uf.toUpperCase();
     return fire(setDoc(doc(db, 'config', 'geral'), { ...cfg, empresa: e, controlaNF: !!v.controlaNF }), 'Dados da empresa salvos') }
   if (f.id === 'prodF') { const l = produtos().map((_, k) => ({ c: v['c' + k].trim(), d: v['d' + k].trim(), un: (v['un' + k] || 'UN').trim().toUpperCase(), p: +v['p' + k] || 0, ncm: (v['ncm' + k] || '').trim(), f: v['f' + k] === '' ? 1 : +v['f' + k] }));
     if (new Set(l.map(x => x.c)).size !== l.length) return toast('Cada produto precisa de um código diferente.');

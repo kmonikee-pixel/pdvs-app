@@ -239,7 +239,7 @@ button.card.colab{text-align:left;font:inherit;color:inherit;cursor:pointer;tran
 .scrollbox .rr{border-bottom:1px solid var(--soft)}
 .chip.sm{min-height:36px;padding:0 12px;font-size:14px}
 .bvcard.carga{border-left-color:var(--ink);grid-template-columns:minmax(0,1.6fr) minmax(0,1fr)}
-.bvl span{color:var(--mute);font-size:14px}
+.bvl span:not(.tier){color:var(--mute);font-size:14px}
 tfoot td{background:var(--soft);border-bottom:0}
 @media(min-width:761px){.ptab{table-layout:fixed}}
 .kpis{display:none!important}
@@ -259,7 +259,7 @@ body:not(.vend) [data-vend]{display:none!important}
 .fd{display:flex;justify-content:space-between;gap:10px;align-items:center;padding:8px 0;border-bottom:1px solid var(--soft)}.fd>div{flex:1;min-width:0}.fd .lk{flex:none;white-space:nowrap;padding:4px 0}
 @media(min-width:761px){.ptop .cb{display:none}}
 .scrollbox.tall{max-height:70dvh}
-.rr i{display:grid;place-items:center}
+.rr i{display:grid;place-items:center}.rr i.pod{color:var(--acc);font-weight:800}.rr.me{background:var(--soft);border-radius:8px}
 .pr{display:flex;gap:12px;align-items:center}.ph{width:46px;height:46px;border-radius:10px;background:var(--soft);border:1px dashed var(--line);flex:none;position:relative;overflow:hidden;display:grid;place-items:center}
 .ph i{font-style:normal;font-size:10px;color:var(--mute)}.ph img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;background:#fff}
 .rec .rb.two{display:grid;grid-template-columns:1fr 1fr;gap:12px}
