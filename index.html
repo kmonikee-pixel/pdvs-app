@@ -234,6 +234,14 @@ dialog[open]{animation:dlgIn 220ms var(--ease-out)}dialog[open]::backdrop{animat
 .bvr b{font:800 26px "Barlow Condensed",Barlow,sans-serif;display:block}.bvr.venc b{color:var(--brick)}
 button.card.colab{text-align:left;font:inherit;color:inherit;cursor:pointer;transition:transform 160ms var(--ease-out),border-color 160ms}button.card.colab:active{transform:scale(.98)}
 @media(hover:hover) and (pointer:fine){button.card.colab:hover{border-color:var(--acc)}}
+.vend [data-gest],.vend .kpis{display:none!important}
+.scrollbox{max-height:440px;overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;border-top:1px solid var(--line);border-bottom:1px solid var(--line);margin:0 -16px;padding:2px 16px;mask-image:linear-gradient(#000 calc(100% - 28px),#0000);-webkit-mask-image:linear-gradient(#000 calc(100% - 28px),#0000);padding-bottom:24px}
+.scrollbox .rr{border-bottom:1px solid var(--soft)}
+.chip.sm{min-height:36px;padding:0 12px;font-size:14px}
+.bvcard.carga{border-left-color:var(--ink);grid-template-columns:minmax(0,1.6fr) minmax(0,1fr)}
+.bvl span{color:var(--mute);font-size:14px}
+tfoot td{background:var(--soft);border-bottom:0}
+@media(min-width:761px){.ptab{table-layout:fixed}}
 pre,.scroll{overflow-x:auto}
 @media(max-width:900px){.kpis{grid-template-columns:repeat(3,minmax(0,1fr))}.tiers{grid-template-columns:repeat(2,minmax(0,1fr))}.hero{grid-template-columns:minmax(0,1fr)}}
 @media(max-width:760px){
@@ -248,7 +256,8 @@ pre,.scroll{overflow-x:auto}
  .capa{grid-template-columns:minmax(0,1fr);padding:18px;gap:14px}.mega{min-height:72px;font-size:22px}
  .mets{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.met{padding:14px;grid-column:span 1}.met.big{grid-column:span 2}.met:last-child{grid-column:span 2}
  .v-inicio .fab{display:none}
- .bvcard{grid-template-columns:minmax(0,1fr)}
+ .bvcard,.bvcard.carga{grid-template-columns:minmax(0,1fr)}
+ .scrollbox{max-height:60dvh}
  .mets.t5{grid-template-columns:repeat(2,minmax(0,1fr))}.mets.t5 .met:last-child{grid-column:span 2}
  main{padding:18px 16px calc(150px + var(--safeB))}
  #toast{bottom:calc(150px + var(--safeB))}
@@ -298,13 +307,14 @@ pre,.scroll{overflow-x:auto}
   <a href="#inicio"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 11l9-7 9 7v9a1 1 0 0 1-1 1h-5v-6h-6v6H4a1 1 0 0 1-1-1z"/></svg>Início</a>
   <a href="#repor"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12h4l3-8 4 16 3-8h4"/></svg>Repor</a>
   <a href="#pontos"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 21s-7-6.2-7-11.5A7 7 0 0 1 19 9.5C19 14.8 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.5"/></svg>Pontos</a>
-  <a href="#ranking" class="dsk">Ranking</a>
-  <a href="#bonus"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3l2.6 5.6 6 .7-4.5 4.1 1.2 6L12 16.4 6.7 19.4l1.2-6L3.4 9.3l6-.7z"/></svg>Bônus</a>
-  <a href="#triagem" class="dsk" data-tri>Triagem</a>
+  <a href="#ranking" class="dsk" data-gest>Ranking</a>
+  <a href="#bonus" data-gest><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3l2.6 5.6 6 .7-4.5 4.1 1.2 6L12 16.4 6.7 19.4l1.2-6L3.4 9.3l6-.7z"/></svg>Bônus</a>
+  <a href="#triagem" class="dsk" data-tri data-gest>Triagem</a>
   <a href="#time" class="dsk" data-admin hidden>Desempenho</a>
   <a href="#notas" class="dsk" data-admin hidden>Notas</a>
   <a href="#equipe" class="dsk" data-admin hidden>Equipe</a>
-  <a href="#ajustes" class="dsk">Ajustes</a>
+  <a href="#produtos" class="dsk" data-gest>Produtos</a>
+  <a href="#ajustes" class="dsk" data-gest>Ajustes</a>
   <a href="#mais" class="mob"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16M4 12h16M4 18h16"/></svg>Mais</a>
 </nav>
 <main id="view"><div class="empty">Carregando…</div></main>

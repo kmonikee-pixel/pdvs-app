@@ -33,8 +33,8 @@ const DEF = { unidade: 'caixa', preco: 0, ciclo: 15, ptsCaixa: 10, ptsPontual: 5
 /* ---------- estado ---------- */
 let app, auth, db, me = null, started = false, unsubs = [];
 let pdvs = new Map(), evs = [], peds = [], bons = [], cfg = { ...clone(DEF), bv: clone(DEFV) }, acessos = new Map(), M = new Map();
-let impTxt = '', pending = 0, cached = true, F = { q: '', st: '', cid: '', tipo: '', sort: 'nome' }, rcid = '', per = 90, skip = new Set(), undo = null, openId = null, installEvt = null, ip = 'mes', iv = 'eu', tp = 'mes', colabOpen = null;
-const can = { write: () => me && me.papel !== 'leitura', admin: () => me && me.papel === 'admin' };
+let impTxt = '', pending = 0, cached = true, F = { q: '', st: '', cid: '', tipo: '', sort: 'nome' }, rcid = '', per = 90, skip = new Set(), undo = null, openId = null, installEvt = null, ip = 'mes', iv = 'eu', tp = 'mes', colabOpen = null, cargas = [], ilf = 'ativo';
+const can = { write: () => me && me.papel !== 'leitura', admin: () => me && me.papel === 'admin', gest: () => me && me.papel !== 'vendedor' };
 
 /* ---------- inicialização ---------- */
 if ('serviceWorker' in navigator) addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(() => {}));
@@ -68,7 +68,7 @@ $('#forgot').onclick = async () => {
 };
 $('#gateOut').onclick = () => signOut(auth);
 
-function stopAll() { unsubs.forEach(u => u()); unsubs = []; started = false; me = null; pdvs = new Map(); bons = []; acessos = new Map() }
+function stopAll() { unsubs.forEach(u => u()); unsubs = []; started = false; me = null; pdvs = new Map(); bons = []; acessos = new Map(); cargas = [] }
 
 function resolveRole(u) {
   const email = (u.email || '').toLowerCase();
@@ -80,7 +80,7 @@ function resolveRole(u) {
     else if (!a) { me = null; return gate(`O e-mail ${email} ainda não tem acesso. Peça para a administradora liberar.`, { out: true }) }
     else if (!a.ativo) { me = null; return gate('Seu acesso está desativado. Fale com a administradora.', { out: true }) }
     else me = { email, nome: a.nome || email, papel: a.papel || 'vendedor' };
-    document.body.classList.toggle('ro', !can.write()); document.body.classList.toggle('notadm', !can.admin());
+    document.body.classList.toggle('ro', !can.write()); document.body.classList.toggle('notadm', !can.admin()); document.body.classList.toggle('vend', !can.gest());
     $('#whoName').textContent = me.nome === PAPEIS[me.papel] ? me.nome : `${me.nome} · ${PAPEIS[me.papel]}`;
     document.querySelectorAll('[data-admin]').forEach(a => a.hidden = !can.admin());
     if (!started) startData();
@@ -96,6 +96,7 @@ function startData() {
     pending = s.docs.filter(d => d.metadata.hasPendingWrites).length; cached = s.metadata.fromCache;
     flatten(); net(); render();
   }, fail));
+  unsubs.push(onSnapshot(doc(db, 'config', 'cargas'), s => { cargas = s.exists() && Array.isArray(s.data().mov) ? s.data().mov : []; render() }, fail));
   unsubs.push(onSnapshot(collection(db, 'bonus'), s => { bons = s.docs.map(d => ({ ...d.data(), id: d.id })); render() }, fail));
   unsubs.push(onSnapshot(doc(db, 'config', 'geral'), s => { cfg = s.exists() ? { ...clone(DEF), ...s.data() } : clone(DEF); if (!Array.isArray(cfg.niveis) || cfg.niveis.length !== 4) cfg.niveis = clone(DEF.niveis); cfg.bv = { ...clone(DEFV), ...(cfg.bv || {}) }; if (!Array.isArray(cfg.bv.niveis) || cfg.bv.niveis.length !== 4) cfg.bv.niveis = clone(DEFV.niveis); render() }, fail));
   if (can.admin()) unsubs.push(onSnapshot(collection(db, 'acessos'), s => { acessos = new Map(s.docs.map(d => [d.id, d.data()])); if (cur() === 'equipe') render() }, fail));
@@ -147,7 +148,7 @@ function derive() {
 const FP = ['PIX', 'Dinheiro', 'Cartão', 'Boleto', 'A prazo'];
 const brD = s => s ? s.slice(8, 10) + '/' + s.slice(5, 7) + '/' + s.slice(0, 4) : '';
 const emp = () => cfg.empresa || {};
-function produtos() { const l = Array.isArray(cfg.produtos) && cfg.produtos.length ? cfg.produtos : [{ c: 'SDF-CX', d: 'Seda de Favela (caixa)', un: 'CX', p: +cfg.preco || 0, ncm: '4813.10.00', f: 1 }]; return l }
+function produtos() { const l = Array.isArray(cfg.produtos) && cfg.produtos.length ? cfg.produtos : [{ c: 'SDF-CX', d: 'Seda de Favela (caixa)', cat: 'Sedas', un: 'CX', p: +cfg.preco || 0, ncm: '4813.10.00', f: 1 }]; return l }
 const prodDe = c => produtos().find(x => x.c === c);
 function itensDe(o) { if (Array.isArray(o.it) && o.it.length) return o.it; if (o.t === 'v' || !+o.q) return []; const p0 = produtos()[0]; return [{ c: p0.c, d: p0.d, un: p0.un, ncm: p0.ncm, q: +o.q, pu: +o.q ? (+o.v || 0) / +o.q : 0 }] }
 const subtotal = o => itensDe(o).reduce((a, i) => a + (+i.q || 0) * (+i.pu || 0), 0);
@@ -181,7 +182,7 @@ function kpis() {
   <div class="kpi"><span class="num">${nf(q30)}</span><small>${esc(U())}s em 30 dias${q60 || q30 ? ` · ${d >= 0 ? '+' : ''}${nf(d)}` : ''}</small></div>
   <div class="kpi"><span class="num">${rec ? brl(rec) : 'R$ 0'}</span><small>a receber</small></div>
   <button class="kpi" data-go="triagem"><span class="num">${ver}</span><small>a verificar · ${pro} prospecção</small></button>`;
-  $('#sub').textContent = `${all.length} pontos · ${peds.length} pedidos registrados`;
+  $('#sub').textContent = can.gest() ? `${all.length} pontos · ${peds.length} pedidos registrados` : `${meusP().length} pontos seus · ${peds.filter(o => o.por === me.email).length} pedidos seus`;
   const tb = $('#tabs a[data-tri]'); tb.innerHTML = 'Triagem' + (ver ? ` <b>${ver}</b>` : '');
 }
 
@@ -193,15 +194,16 @@ function rcard(p) { const s = M.get(p.id), late = s.dAte < 0;
   <div class="cb"><button class="btn sm ink" data-w data-act="newPed" data-id="${esc(p.id)}">Registrar</button>${wa(p)}${mapa(p)}</div></div>` }
 
 function vRepor() {
-  const at = [...pdvs.values()].filter(p => p.status === 'ativo');
+  const base = can.gest() ? [...pdvs.values()] : meusP(), at = base.filter(p => p.status === 'ativo');
   const cids = [...new Set(at.filter(p => M.get(p.id).last).map(p => p.cidade).filter(Boolean))].sort();
   const wl = at.filter(p => M.get(p.id).last && (!rcid || p.cidade === rcid)).sort((a, b) => M.get(a.id).dAte - M.get(b.id).dAte);
   const g = [['Atrasados', wl.filter(p => M.get(p.id).dAte < 0)], ['Hoje até 3 dias', wl.filter(p => { const d = M.get(p.id).dAte; return d >= 0 && d <= 3 })], ['Esta semana', wl.filter(p => { const d = M.get(p.id).dAte; return d > 3 && d <= 7 })], ['Mais pra frente', wl.filter(p => M.get(p.id).dAte > 7)]];
-  const semPed = at.filter(p => !M.get(p.id).last && (!rcid || p.cidade === rcid)), pro = [...pdvs.values()].filter(p => p.status === 'prospeccao' && (!rcid || p.cidade === rcid)).sort((a, b) => (a.proxContato || '9') < (b.proxContato || '9') ? -1 : 1);
+  const semPed = at.filter(p => !M.get(p.id).last && (!rcid || p.cidade === rcid)), pro = base.filter(p => p.status === 'prospeccao' && (!rcid || p.cidade === rcid)).sort((a, b) => (a.proxContato || '9') < (b.proxContato || '9') ? -1 : 1);
   const ver = [...pdvs.values()].filter(p => p.status === 'verificar').length;
   let h = `<h2>Quem repor</h2><p class="lead">A data vem do ritmo de cada ponto. Anote a sobra que encontrar em cada visita, mesmo sem pedido: é ela que mostra quanto o ponto vende por semana.</p>`;
   if (cids.length > 1) h += `<div class="chips"><button class="chip ${!rcid ? 'on' : ''}" data-act="rcid" data-v="">Todas</button>${cids.map(c => `<button class="chip ${rcid === c ? 'on' : ''}" data-act="rcid" data-v="${esc(c)}">${esc(c)}</button>`).join('')}</div>`;
-  if (!peds.length) h += `<div class="hero"><div><h3 style="margin-top:0">Comece por aqui</h3><ol class="steps">
+  if (!can.gest() && !base.length) h += `<div class="empty">Nenhum ponto no seu nome ainda. Os pontos que você cadastrar ou atender aparecem aqui.</div>`;
+  if (!peds.length && can.gest()) h += `<div class="hero"><div><h3 style="margin-top:0">Comece por aqui</h3><ol class="steps">
    <li><b>Triagem:</b> marque quem está ativo, inativo ou fechou. Um toque por ponto.</li>
    <li><b>Registre o último pedido</b> de cada ativo. É isso que liga a previsão.</li>
    <li>Na rua, a cada visita: botão <b>+</b>, e anote a sobra que encontrou.</li></ol>
@@ -213,12 +215,12 @@ function vRepor() {
   return h }
 
 function vPontos() {
-  const all = [...pdvs.values()], cids = [...new Set(all.map(p => p.cidade).filter(Boolean))].sort(), q = F.q.trim().toLowerCase();
+  const all = can.gest() ? [...pdvs.values()] : meusP(), cids = [...new Set(all.map(p => p.cidade).filter(Boolean))].sort(), q = F.q.trim().toLowerCase();
   let l = all.filter(p => (!F.st || p.status === F.st) && (!F.cid || p.cidade === F.cid) && (!F.tipo || p.tipo === F.tipo) && (!q || [p.nome, p.bairro, p.cidade, p.endereco, p.contato].join(' ').toLowerCase().includes(q)));
   const S = { nome: (a, b) => a.nome.localeCompare(b.nome), prox: (a, b) => (M.get(a.id).dAte ?? 1e9) - (M.get(b.id).dAte ?? 1e9), compra: (a, b) => qtdEm(b.id, 90) - qtdEm(a.id, 90), ult: (a, b) => (M.get(b.id).last?.d || '') > (M.get(a.id).last?.d || '') ? 1 : -1 };
   l.sort(S[F.sort]);
   const opt = (v, t, c) => `<option value="${esc(v)}" ${c === v ? 'selected' : ''}>${esc(t)}</option>`;
-  return `<h2>Todos os pontos</h2><p class="lead">${l.length} de ${all.length} pontos.</p>
+  return `<h2>${can.gest() ? 'Todos os pontos' : 'Meus pontos'}</h2><p class="lead">${l.length} de ${all.length} pontos${can.gest() ? '' : ' no seu nome ou que você atende'}.</p>
   <div class="bar"><input id="fq" type="search" placeholder="Buscar nome, bairro, telefone…" value="${esc(F.q)}" aria-label="Buscar">
   <select id="fst" aria-label="Status">${opt('', 'Todos os status', F.st)}${Object.entries(ST).map(([k, v]) => opt(k, v, F.st)).join('')}</select>
   <select id="fcid" aria-label="Cidade">${opt('', 'Todas as cidades', F.cid)}${cids.map(c => opt(c, c, F.cid)).join('')}</select>
@@ -331,19 +333,17 @@ function vAjustes() { const n = cfg.niveis, ad = can.admin();
   <form id="empF" class="f card" style="padding:20px">${[['razao', 'Razão social', 'w'], ['doc', 'CNPJ (ou CPF)'], ['ie', 'Inscrição estadual'], ['endereco', 'Endereço com número', 'w'], ['bairro', 'Bairro'], ['cidade', 'Cidade'], ['uf', 'UF'], ['cep', 'CEP'], ['tel', 'Telefone / WhatsApp'], ['email', 'E-mail'], ['pix', 'Chave PIX'], ['rodape', 'Texto do rodapé do comprovante', 'w']].map(([k, l, w]) => `<label class="${w || ''}">${l}<input name="${k}" value="${esc(emp()[k])}"></label>`).join('')}
   <label class="w" style="flex-direction:row;gap:10px;align-items:center"><input type="checkbox" name="controlaNF" ${cfg.controlaNF === false ? '' : 'checked'} style="width:22px;min-height:22px"> Controlar emissão de NF-e em cada pedido</label>
   <div class="fa w"><button class="btn ink">Salvar dados da empresa</button></div></form>
-  <h3>Produtos</h3><p class="lead">O que aparece para escolher no pedido. "Conta como" diz quantas ${esc(U())}s cada unidade vale no giro e no bônus (0 para brindes e acessórios). Confirme NCM e tributação com a contabilidade.</p>
-  <form id="prodF" class="card" style="padding:16px"><table class="stack"><thead><tr><th>Código</th><th>Descrição</th><th>Unid.</th><th>Preço R$</th><th>NCM</th><th>Conta como</th><th></th></tr></thead><tbody>${produtos().map((p, k) => `<tr><td><input name="c${k}" value="${esc(p.c)}" required></td><td><input name="d${k}" value="${esc(p.d)}" required></td><td><input name="un${k}" value="${esc(p.un)}" style="max-width:80px"></td><td><input name="p${k}" type="number" step="0.01" min="0" value="${+p.p || 0}" style="max-width:110px"></td><td><input name="ncm${k}" value="${esc(p.ncm)}" style="max-width:130px"></td><td><input name="f${k}" type="number" step="0.01" min="0" value="${p.f ?? 1}" style="max-width:90px"></td><td>${produtos().length > 1 ? `<button type="button" class="lk" data-act="prodDel" data-id="${k}">Remover</button>` : ''}</td></tr>`).join('')}</tbody></table>
-  <div class="fa"><button type="button" class="btn line" data-act="prodAdd">+ Produto</button><button class="btn ink">Salvar produtos</button></div></form>` : ''}
+  <h3>Produtos</h3><p class="lead">${produtos().length} produtos cadastrados. <a class="lk" href="#produtos">Abrir a lista de produtos</a></p>` : ''}
   <h3>Exportar</h3><div class="cb"><button class="btn line" data-act="csv" data-v="pdv">Baixar pontos (.csv)</button><button class="btn line" data-act="csv" data-v="ped">Baixar pedidos e visitas (.csv)</button></div>
   ${ad ? `<h3>Importar do painel antigo</h3><p class="lead">Use uma vez, com internet, com o arquivo pdvs-importacao.json. Pontos que já existem recebem só o histórico que faltar; nada é apagado.</p><label class="btn line" style="width:fit-content">Escolher arquivo<input type="file" id="impF" accept=".json,application/json" hidden></label><p class="pl" id="impMsg">${esc(impTxt)}</p>` : ''}` }
 
 function vMais() {
   const ios = /iphone|ipad|ipod/i.test(navigator.userAgent), standalone = matchMedia('(display-mode: standalone)').matches || navigator.standalone;
   return `<h2>Mais</h2><div class="menu">
-  <a href="#ranking">Ranking <span>quem mais compra e vende</span></a>
+  ${can.gest() ? `<a href="#ranking">Ranking <span>quem mais compra e vende</span></a><a href="#bonus">Bônus dos clientes <span>programa de fidelidade dos pontos</span></a><a href="#produtos">Produtos <span>${produtos().length} cadastrados</span></a>
   <a href="#triagem">Triagem <span>${[...pdvs.values()].filter(p => p.status === 'verificar').length} a verificar</span></a>
   ${can.admin() ? `<a href="#notas">Notas fiscais <span>${peds.filter(o => o.nf && o.nf.st !== 'emitida').length} a emitir</span></a><a href="#time">Desempenho da equipe <span>ficha e bônus de cada colaborador</span></a><a href="#equipe">Equipe <span>acessos dos vendedores</span></a>` : ''}
-  <a href="#ajustes">Ajustes e exportar <span>regras e planilhas</span></a>
+  <a href="#ajustes">Ajustes e exportar <span>regras e planilhas</span></a>` : `<a href="#pontos">Meus pontos <span>${meusP().length} no seu nome ou que você atende</span></a><a href="#repor">Reposição <span>quem está perto de repor</span></a>`}
   ${!standalone && installEvt ? '<button data-act="install">Instalar app no celular <span>Android</span></button>' : ''}
   <button data-act="logout">Sair <span>${esc(me?.email || '')}</span></button></div>
   ${!standalone && ios ? `<div class="card" style="margin-top:16px;max-width:520px"><b>Instalar no iPhone</b><ol class="steps"><li>Abra este endereço no <b>Safari</b>.</li><li>Toque em <b>Compartilhar</b> (quadrado com seta pra cima).</li><li>Escolha <b>Adicionar à Tela de Início</b> e confirme.</li></ol></div>` : ''}
@@ -353,6 +353,7 @@ function vMais() {
 const nomeDe = email => { if (!email) return 'Sem vendedor'; const a = acessos.get(email); if (a?.nome) return a.nome; if (me && email === me.email) return me.nome;
   const o = peds.find(x => x.por === email && x.pn); if (o) return o.pn; for (const p of pdvs.values()) if (p.criadoPor === email && p.criadoPorNome) return p.criadoPorNome; return email.split('@')[0] };
 function conquistador(p) { if (p.dono) return p.dono; if (p.criadoPor) return p.criadoPor; const f = M.get(p.id)?.ps.find(o => o.por); return f ? f.por : '' }
+const meusP = () => [...pdvs.values()].filter(p => p.status !== 'fechou' && (conquistador(p) === me.email || (p.hist || []).some(e => e.por === me.email)));
 const conqD = p => (p.criadoPor && p.criado) || M.get(p.id)?.ps[0]?.d || p.criado || '';
 function desdeDe(k) { const t = today(); return k === 'mes' ? t.slice(0, 8) + '01' : k === 'd90' ? addD(t, -89) : '0000-00-00' }
 function numeros(email, k) { const de = desdeDe(k), mine = o => !email || o.por === email;
@@ -364,15 +365,15 @@ function vInicio() {
   const eq = can.admin() && iv === 'eq', em = eq ? '' : me.email, x = numeros(em, ip), pn = (me.nome || '').split(' ')[0];
   const PER = { mes: 'Este mês', d90: '90 dias', tudo: 'Desde o início' };
   const h0 = new Date().getHours(), oi = h0 < 12 ? 'Bom dia' : h0 < 18 ? 'Boa tarde' : 'Boa noite';
-  const meus = x.con.slice().sort((a, b) => (conqD(b) > conqD(a) ? 1 : -1)).slice(0, 6);
-  const rep = x.con.filter(p => p.status === 'ativo' && M.get(p.id).prox && M.get(p.id).dAte <= 3).sort((a, b) => M.get(a.id).dAte - M.get(b.id).dAte);
+  const lst = (eq ? [...pdvs.values()].filter(p => p.status !== 'fechou') : meusP()).sort((a, b) => a.nome.localeCompare(b.nome)), vis = ilf === 'todos' ? lst : lst.filter(p => p.status === ilf);
+  const rep = lst.filter(p => p.status === 'ativo' && M.get(p.id).prox && M.get(p.id).dAte <= 3).sort((a, b) => M.get(a.id).dAte - M.get(b.id).dAte);
   // ranking da equipe no período
   const de = desdeDe(ip), rk = new Map(), add = (e, k, n) => { if (!e) return; const r = rk.get(e) || { q: 0, c: 0 }; r[k] += n; rk.set(e, r) };
   peds.filter(o => o.d >= de && o.por).forEach(o => add(o.por, 'q', +o.q || 0));
   [...pdvs.values()].forEach(p => { const c = conquistador(p); if (c && p.status !== 'fechou' && conqD(p) >= de) add(c, 'c', 1) });
   const rl = [...rk].sort((a, b) => b[1].q - a[1].q || b[1].c - a[1].c), mx = Math.max(1, ...rl.map(r => r[1].q)), pos = rl.findIndex(r => r[0] === me.email);
   let h = `<section class="capa"><div class="capa-t"><span class="pl">${oi}${eq ? '' : ','}</span><h2>${eq ? 'Números da equipe' : esc(pn || 'vendedor')}</h2>
-   <p class="pl">${eq ? 'Tudo que a equipe vendeu e conquistou.' : pos >= 0 && rl.length > 1 ? `Você está em <b>${pos + 1}º</b> no ranking da equipe (${PER[ip].toLowerCase()}).` : 'Seus números na rua, atualizados a cada registro.'}</p></div>
+   <p class="pl">${eq ? 'Tudo que a equipe vendeu e conquistou.' : can.gest() && pos >= 0 && rl.length > 1 ? `Você está em <b>${pos + 1}º</b> no ranking da equipe (${PER[ip].toLowerCase()}).` : 'Seus números na rua, atualizados a cada registro.'}</p></div>
    <div class="cta"><button class="btn mega" data-w data-act="newPdv"><span class="plus">+</span><span>Cadastrar novo PDV<small>ponto conquistado ou em prospecção</small></span></button>
    <button class="btn mega2" data-w data-act="newPed">Registrar pedido ou visita</button>${can.admin() ? '<a class="btn mega2" href="#time">Desempenho da equipe</a>' : ''}</div></section>
   <div class="chips">${can.admin() ? `<button class="chip ${!eq ? 'on' : ''}" data-act="iv" data-v="eu">Meus números</button><button class="chip ${eq ? 'on' : ''}" data-act="iv" data-v="eq">Equipe toda</button><span class="sep"></span>` : ''}${Object.entries(PER).map(([k, t]) => `<button class="chip ${ip === k ? 'on' : ''}" data-act="ip" data-v="${k}">${t}</button>`).join('')}</div>
@@ -384,13 +385,68 @@ function vInicio() {
    <div class="met"><span class="num">${x.v ? brl(x.v) : 'R$ 0'}</span><small>vendido${ip === 'tudo' ? '' : ' no período'}</small></div>
   </div>
   ${eq ? '' : (() => { const bv = bonusV(me.email, ymDe('mes')), c = colab(me.email, 'mes');
-    return `<div class="bvcard"><div><span class="pl">Sua bonificação de ${esc(nomeMes(ymDe('mes')))}</span><div class="bvl">${tierV(bv.nv)}<b>${bv.pts} pts</b></div><div class="pl">${progV(bv)}</div></div><div class="bvp"><small>prêmio do nível</small><b>${esc(cfg.bv.niveis[bv.nv].premio)}</b>${bv.nx ? `<small>próximo: ${esc(bv.nx.premio)}</small>` : ''}</div>${c.rec ? `<div class="bvr ${c.venc ? 'venc' : ''}"><small>a receber dos seus pedidos</small><b>${brl(c.rec)}</b>${c.venc ? `<small>${brl(c.venc)} vencido</small>` : ''}</div>` : ''}</div>` })()}
+    return `<div class="bvcard"><div><span class="pl">Sua bonificação de ${esc(nomeMes(ymDe('mes')))}</span><div class="bvl">${tierV(bv.nv)}<b>${bv.pts} pts</b></div><div class="pl">${progV(bv)}</div></div><div class="bvp"><small>prêmio do nível</small><b>${esc(cfg.bv.niveis[bv.nv].premio)}</b>${bv.nx ? `<small>próximo: ${esc(bv.nx.premio)}</small>` : ''}</div>${c.rec ? `<div class="bvr ${c.venc ? 'venc' : ''}"><small>a receber dos seus pedidos</small><b>${brl(c.rec)}</b>${c.venc ? `<small>${brl(c.venc)} vencido</small>` : ''}</div>` : ''}</div>${(() => { const k = estoqueDe(me.email); return k.n ? `<div class="bvcard carga"><div><span class="pl">Mercadoria com você</span><div class="bvl"><b>${nf(k.com)}</b><span>${esc(Us(k.com))} na mão</span></div><div class="pl">Pegou ${nf(k.ent)} · vendeu ${nf(k.vend)} · devolveu ${nf(k.dev)}</div></div><div class="bvr ${k.aPagar > 0 ? 'venc' : ''}"><small>falta acertar com a empresa</small><b>${brl(Math.max(0, k.aPagar))}</b>${k.ultP ? `<small>último acerto ${fd(k.ultP)}</small>` : ''}</div></div>` : '' })()}` })()}
   <div class="cols" style="margin-top:8px">
-   <div class="rk"><h3>Ranking da equipe <span>${PER[ip]}</span></h3>${rl.length ? rl.slice(0, 8).map(([e, r], i) => `<div class="rr ${e === me.email ? 'me' : ''}" style="cursor:default"><i>${i + 1}</i><span class="n">${esc(nomeDe(e))}${e === me.email ? ' (você)' : ''}</span><span class="v">${nf(r.q)} ${esc(Us(r.q))} · ${r.c} novos</span><div class="tr"><div style="width:${r.q / mx * 100}%"></div></div></div>`).join('') : '<p class="pl">Ninguém registrou pedido nesse período ainda.</p>'}</div>
-   <div class="rk"><h3>${eq ? 'Conquistas recentes' : 'Seus pontos'} <span>${x.con.length}</span></h3>${meus.length ? meus.map(p => `<div class="rr" data-act="open" data-id="${esc(p.id)}"><i>•</i><span class="n">${esc(p.nome)}</span><span class="v">${pill(p.status)}</span><span class="pl" style="grid-column:2/4">${esc(lugar(p))}${eq ? ' · ' + esc(nomeDe(conquistador(p))) : ''}</span></div>`).join('') + (x.con.length > 6 ? `<a class="lk" href="#pontos">Ver todos os pontos</a>` : '') : `<div class="empty" style="padding:16px">${eq ? 'Nenhum ponto tem vendedor definido ainda.' : 'Nenhum ponto no seu nome ainda. Cada ponto que você cadastrar ou fizer o primeiro pedido entra aqui.'}</div>`}
+   ${can.gest() ? `<div class="rk"><h3>Ranking da equipe <span>${PER[ip]}</span></h3>${rl.length ? rl.slice(0, 8).map(([e, r], i) => `<div class="rr ${e === me.email ? 'me' : ''}" style="cursor:default"><i>${i + 1}</i><span class="n">${esc(nomeDe(e))}${e === me.email ? ' (você)' : ''}</span><span class="v">${nf(r.q)} ${esc(Us(r.q))} · ${r.c} novos</span><div class="tr"><div style="width:${r.q / mx * 100}%"></div></div></div>`).join('') : '<p class="pl">Ninguém registrou pedido nesse período ainda.</p>'}</div>` : ''}
+   <div class="rk"><h3>${eq ? 'Pontos da empresa' : 'Seus pontos'} <span>${lst.length}</span></h3>
+    <div class="chips" style="margin-bottom:8px">${[['ativo', 'Ativos'], ['prospeccao', 'Prospecção'], ['todos', 'Todos']].map(([k, t]) => `<button class="chip sm ${ilf === k ? 'on' : ''}" data-act="ilf" data-v="${k}">${t} ${k === 'todos' ? lst.length : lst.filter(p => p.status === k).length}</button>`).join('')}</div>
+    ${vis.length ? `<div class="scrollbox">${vis.map(p => { const s = M.get(p.id); return `<div class="rr" data-act="open" data-id="${esc(p.id)}"><i>•</i><span class="n">${esc(p.nome)}</span><span class="v">${pill(p.status)}</span><span class="pl" style="grid-column:2/4">${esc(lugar(p))}${s?.last ? ' · último pedido ' + fd(s.last.d) : ''}${eq && conquistador(p) ? ' · ' + esc(nomeDe(conquistador(p))) : ''}</span></div>` }).join('')}</div>` : `<div class="empty" style="padding:16px">${lst.length ? 'Nenhum ponto nesse filtro.' : eq ? 'Nenhum ponto cadastrado.' : 'Nenhum ponto no seu nome ainda. Cada ponto que você cadastrar ou atender entra aqui.'}</div>`}
    ${rep.length ? `<h3>Pra repor até 3 dias <span>${rep.length}</span></h3>${rep.slice(0, 5).map(p => `<div class="rr" data-act="open" data-id="${esc(p.id)}"><i>!</i><span class="n">${esc(p.nome)}</span><span class="v">${M.get(p.id).dAte < 0 ? 'atrasado ' : ''}${rel(M.get(p.id).dAte)}</span></div>`).join('')}<a class="lk" href="#repor">Abrir reposição</a>` : ''}</div>
   </div>`;
   return h }
+
+/* ---------- mercadoria com cada colaborador (consignação) ---------- */
+function estoqueDe(email) { const mv = cargas.filter(m => m.em === email), f = m => (+m.q || 0) * (prodDe(m.prod)?.f ?? 1), val = m => (+m.q || 0) * (+m.pu || 0);
+  const ini = mv.filter(m => m.t === 'e').map(m => m.d).sort()[0];
+  const ent = mv.filter(m => m.t === 'e').reduce((a, m) => a + f(m), 0), entV = mv.filter(m => m.t === 'e').reduce((a, m) => a + val(m), 0);
+  const dev = mv.filter(m => m.t === 'd').reduce((a, m) => a + f(m), 0), devV = mv.filter(m => m.t === 'd').reduce((a, m) => a + val(m), 0);
+  const pago = mv.filter(m => m.t === 'p').reduce((a, m) => a + (+m.v || 0), 0), ultP = mv.filter(m => m.t === 'p').map(m => m.d).sort().pop() || '';
+  const vend = ini ? peds.filter(o => o.por === email && o.d >= ini).reduce((a, o) => a + (+o.q || 0), 0) : 0;
+  return { n: mv.length, mv, ent, entV, dev, devV, pago, ultP, vend, com: ent - dev - vend, aPagar: entV - devV - pago, ini } }
+function cargaForm(email, t) { const ps = produtos().filter(p => p.ativo !== false), p0 = ps.find(p => +p.f === 1) || ps[0];
+  const T = { e: 'Entregar mercadoria', d: 'Registrar devolução', p: 'Receber pagamento' };
+  show(`${T[t]} · ${esc(nomeDe(email))}`, `<form class="f" id="cargaF" data-em="${esc(email)}" data-t="${t}">
+  ${t === 'p' ? `<label>Valor recebido (R$)<input name="v" type="number" inputmode="decimal" min="0.01" step="0.01" required></label>
+   <label>Forma<select name="fp">${FP.map(x => `<option>${x}</option>`).join('')}</select></label>`
+  : `<label class="w">Produto<select name="prod" id="cgProd">${ps.map(p => `<option value="${esc(p.c)}" data-p="${+p.p || 0}" ${p === p0 ? 'selected' : ''}>${esc(p.d)}</option>`).join('')}</select></label>
+   <label>Quantidade<input name="q" type="number" inputmode="decimal" min="0.5" step="0.5" required></label>
+   <label>Valor por unidade (R$)<input name="pu" id="cgPu" type="number" inputmode="decimal" min="0" step="0.01" value="${+p0?.p || 0}"><small>Quanto ${t === 'e' ? 'ele vai pagar' : 'abate da conta dele'} por unidade</small></label>`}
+  <label>Data<input name="d" type="date" required value="${today()}"></label>
+  <label class="w">Observação<input name="o" placeholder="Opcional"></label>
+  <div class="fa w"><button type="button" class="btn line" data-act="colab" data-id="${esc(email)}">Voltar</button><button class="btn ink">Salvar</button></div></form>`);
+  $('#cgProd')?.addEventListener('change', e => { $('#cgPu').value = e.target.selectedOptions[0].dataset.p }) }
+const salvaCargas = (mov, ok) => fire(setDoc(doc(db, 'config', 'cargas'), { mov, atualizado: today() }), ok);
+
+/* ---------- produtos ---------- */
+const CATALOGO_NOV26 = [
+  ...[['BAL', 'Do Balão'], ['BOC', 'Da Boca'], ['ES', 'Espírito Santo'], ['QUE', 'Quebradas']].map(([k, n]) => ({ c: 'SDF-DSP-' + k, d: `Display 15 livretos · ${n}`, cat: 'Sedas', un: 'DSP', p: 22, sug: 45.99, ncm: '4813.10.00', f: 1 })),
+  ...[['NEU', 'Neutra'], ['ROS', 'Rosa']].map(([k, n]) => ({ c: 'PIT-PAP-' + k, d: `Piteira de papel · ${n}`, cat: 'Piteiras', un: 'UN', p: 1.4, sug: 6, ncm: '', f: 0 })),
+  ...[['FLAT', 'Flat'], ['ROUND', 'Round'], ['SLIM', 'Slim']].map(([k, n]) => ({ c: 'PIT-VID-' + k, d: `Piteira de vidro SDF · ${n}`, cat: 'Piteiras', un: 'UN', p: 4.5, sug: 29.99, ncm: '', f: 0 })),
+  { c: 'CUIA-SDF', d: 'Cuia SDF (silicone 67 mm)', cat: 'Acessórios', un: 'UN', p: 10.99, sug: 29.99, ncm: '', f: 0 },
+  { c: 'CINZ-GOLD', d: 'Cinzeiro SDF Gold', cat: 'Acessórios', un: 'UN', p: 4, sug: 8, ncm: '', f: 0 },
+  { c: 'DICH-COCO', d: 'Dichavador fibra de coco', cat: 'Acessórios', un: 'UN', p: 3.5, sug: 15, ncm: '', f: 0 },
+  ...[['PRETO', 'Preto SDF'], ['ROSA', 'Rosa SDF'], ['FAVELA', 'Favela SDF']].map(([k, n]) => ({ c: 'ISQ-' + k, d: `Isqueiro fluido · ${n}`, cat: 'Isqueiros', un: 'UN', p: 29.99, sug: 59.99, ncm: '', f: 0 })),
+  { c: 'KIT-CHEFE', d: 'Kit do Chefe', cat: 'Kits', un: 'KIT', p: 150, sug: 0, ncm: '', f: 0 },
+  { c: 'KIT-CORRE', d: 'Kit do Corre', cat: 'Kits', un: 'KIT', p: 100, sug: 0, ncm: '', f: 0 },
+  { c: 'KIT-CRIA', d: 'Kit dos Cria', cat: 'Kits', un: 'KIT', p: 50, sug: 0, ncm: '', f: 0 }];
+function vProdutos() { const ps = produtos(), ad = can.admin(), cats = [...new Set(ps.map(p => p.cat || 'Produtos'))], falta = CATALOGO_NOV26.filter(c => !ps.some(p => p.c === c.c)).length;
+  return `<h2>Produtos</h2><p class="lead">Tudo que a empresa vende. É essa lista que aparece para escolher no pedido. "Conta como" diz quantas ${esc(U())}s cada unidade vale no giro, nas metas e no bônus (0 para acessórios). NCM e tributação: confirmar com a contabilidade.</p>
+  ${ad ? `<div class="cb" style="margin-bottom:16px"><button class="btn ink" data-act="prodNovo">+ Produto</button>${falta ? `<button class="btn line" data-act="prodCat">Carregar os ${falta} produtos do catálogo de novembro</button>` : ''}</div>` : ''}
+  ${cats.map(c => `<h3>${esc(c)} <span>${ps.filter(p => (p.cat || 'Produtos') === c).length}</span></h3><table class="stack ptab"><colgroup><col><col style="width:14%"><col style="width:18%"><col style="width:12%"><col style="width:16%"></colgroup><thead><tr><th>Produto</th><th class="r">Lojista</th><th class="r">Sugestão de venda</th><th class="r">Conta como</th><th>Situação</th></tr></thead><tbody>
+   ${ps.map((p, k) => [p, k]).filter(([p]) => (p.cat || 'Produtos') === c).map(([p, k]) => `<tr ${ad ? `data-act="prodEd" data-id="${k}" tabindex="0"` : ''}><td><b>${esc(p.d)}</b><div class="pl">${esc(p.c)} · ${esc(p.un)}${p.ncm ? ' · NCM ' + esc(p.ncm) : ''}</div></td><td class="r">${brl(p.p)}</td><td class="r">${+p.sug ? brl(p.sug) : ''}</td><td class="r">${nf(p.f ?? 1)}</td><td>${p.ativo === false ? '<span class="pill p-inativo">fora de linha</span>' : '<span class="pill p-ativo">à venda</span>'}</td></tr>`).join('')}</tbody></table>`).join('')}` }
+function prodForm(k) { const novo = k === '' || k == null, p = novo ? { c: '', d: '', cat: 'Sedas', un: 'UN', p: 0, sug: 0, ncm: '', f: 0 } : produtos()[+k];
+  const cats = [...new Set([...produtos().map(x => x.cat).filter(Boolean), 'Sedas', 'Piteiras', 'Acessórios', 'Isqueiros', 'Kits'])];
+  show(novo ? 'Novo produto' : 'Editar produto', `<form class="f" id="prodF2" data-k="${novo ? '' : k}">
+  <label class="w">Descrição<input name="d" required value="${esc(p.d)}"></label>
+  <label>Código<input name="c" required value="${esc(p.c)}" autocapitalize="characters"></label>
+  <label>Categoria<input name="cat" list="catList" value="${esc(p.cat || '')}"><datalist id="catList">${cats.map(c => `<option value="${esc(c)}">`).join('')}</datalist></label>
+  <label>Unidade<input name="un" value="${esc(p.un)}" placeholder="UN, DSP, CX, KIT"></label>
+  <label>Preço lojista (R$)<input name="p" type="number" step="0.01" min="0" inputmode="decimal" value="${+p.p || 0}"></label>
+  <label>Sugestão de venda (R$)<input name="sug" type="number" step="0.01" min="0" inputmode="decimal" value="${+p.sug || ''}"></label>
+  <label>Conta como ${esc(U())}s<input name="f" type="number" step="0.01" min="0" inputmode="decimal" value="${p.f ?? 1}"><small>1 para display/caixa de seda, 0 para acessório</small></label>
+  <label>NCM<input name="ncm" value="${esc(p.ncm)}"></label>
+  <label class="w" style="flex-direction:row;gap:10px;align-items:center"><input type="checkbox" name="ativo" ${p.ativo === false ? '' : 'checked'} style="width:22px;min-height:22px"> À venda (aparece no pedido)</label>
+  <div class="fa w">${novo ? '' : `<button type="button" class="btn del" data-act="prodDel" data-id="${k}">Remover</button>`}<button type="button" class="btn line" data-act="close">Cancelar</button><button class="btn ink">Salvar</button></div></form>`) }
 
 /* ---------- desempenho de cada colaborador e bonificação da equipe ---------- */
 const MESES = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'];
@@ -426,10 +482,13 @@ function vTime() {
   return `<h2>Desempenho da equipe</h2><p class="lead">Tudo que cada colaborador fez na rua: caixas vendidas, pedidos, visitas, pontos no nome dele, o que tem a receber e a bonificação de ${esc(nomeMes(ym))}. Toque numa pessoa para abrir a ficha completa.</p>
   <div class="chips">${Object.entries(PER).map(([k, t]) => `<button class="chip ${tp === k ? 'on' : ''}" data-act="tp" data-v="${k}">${t}</button>`).join('')}</div>
   <div class="mets t5" style="margin-bottom:16px"><div class="met"><span class="num">${nf(tot.q)}</span><small>${esc(U())}s vendidas pela equipe</small></div><div class="met"><span class="num">${brl(tot.v)}</span><small>vendido</small></div><div class="met"><span class="num">${tot.nov}</span><small>pontos conquistados</small></div><div class="met"><span class="num">${brl(tot.rec)}</span><small>a receber hoje</small>${tot.venc ? `<em style="color:var(--brick)">${brl(tot.venc)} vencido</em>` : ''}</div><div class="met"><span class="num">${l.filter(c => c.b.nv > 0).length}</span><small>bateram nível de bônus em ${esc(nomeMes(ym))}</small></div></div>
+  ${(() => { const k = l.map(c => ({ c, k: estoqueDe(c.email) })).filter(x => x.k.n); return `<h3>Mercadoria com a equipe <span>caixas que saíram com cada um e o que falta pagar</span></h3>${k.length ? `<table class="stack" style="margin-bottom:18px"><thead><tr><th>Colaborador</th><th class="r">Pegou</th><th class="r">Vendeu</th><th class="r">Devolveu</th><th class="r">Com ele agora</th><th class="r">Falta pagar</th><th>Último acerto</th></tr></thead><tbody>${k.map(({ c, k }) => `<tr data-act="colab" data-id="${esc(c.email)}" tabindex="0"><td><b>${esc(c.nome)}</b></td><td class="r">${nf(k.ent)}</td><td class="r">${nf(k.vend)}</td><td class="r">${nf(k.dev)}</td><td class="r"><b>${nf(k.com)}</b> ${esc(Us(k.com))}</td><td class="r"><b style="color:${k.aPagar > 0 ? 'var(--brick)' : 'inherit'}">${brl(Math.max(0, k.aPagar))}</b>${k.aPagar < 0 ? `<div class="pl">crédito ${brl(-k.aPagar)}</div>` : ''}</td><td>${k.ultP ? fd(k.ultP) : '—'}</td></tr>`).join('')}</tbody><tfoot><tr><td><b>Total na rua</b></td><td></td><td></td><td></td><td class="r"><b>${nf(k.reduce((a, x) => a + x.k.com, 0))}</b></td><td class="r"><b>${brl(k.reduce((a, x) => a + Math.max(0, x.k.aPagar), 0))}</b></td><td></td></tr></tfoot></table>` : `<div class="empty" style="margin-bottom:18px">Nenhuma mercadoria entregue ainda. Abra a ficha do colaborador e toque em "Entregar mercadoria".</div>`}` })()}
+  <h3>Colaboradores</h3>
   <div class="grid">${l.map(c => `<button class="card colab" data-act="colab" data-id="${esc(c.email)}">
    <div class="ct"><div><b class="nm" style="cursor:pointer">${esc(c.nome)}</b><div class="pl">${esc(PAPEIS[c.papel] || 'Colaborador')}${c.ativoAc ? '' : ' · acesso desativado'}${c.ult ? ` · ativo ${rel(D(c.ult.d) - D(today()))}` : ' · sem registros'}</div></div><div class="due"><span class="num">${nf(c.q)}</span><small>${esc(Us(c.q))}</small></div></div>
    <div class="meta"><span><b>${c.n}</b> pedidos</span><span><b>${c.vis}</b> visitas</span><span><b>${c.pts.length}</b> pontos dele${c.novos.length ? ` (+${c.novos.length})` : ''}</span><span><b>${brl(c.v)}</b></span></div>
    ${c.rec ? `<div class="meta"><span style="color:${c.venc ? 'var(--brick)' : 'inherit'}">A receber <b style="color:inherit">${brl(c.rec)}</b>${c.venc ? ` · ${brl(c.venc)} vencido` : ''}</span></div>` : ''}
+   ${(() => { const k = estoqueDe(c.email); return k.n ? `<div class="meta"><span>Com ele <b>${nf(k.com)}</b> ${esc(Us(k.com))}</span><span style="color:${k.aPagar > 0 ? 'var(--brick)' : 'inherit'}">falta pagar <b style="color:inherit">${brl(Math.max(0, k.aPagar))}</b></span></div>` : '' })()}
    <div class="meta">${tierV(c.b.nv)}<span><b>${c.b.pts} pts</b> em ${esc(nomeMes(ym))}</span>${c.b.pago ? '<span class="pill p-ativo">bônus pago</span>' : ''}</div></button>`).join('')}</div>
   <h3>Como a bonificação da equipe funciona <span>mensal · editável em Ajustes</span></h3>
   <div class="tiers">${cfg.bv.niveis.map((t, i) => `<div class="tc ${i === 3 ? 'top3' : ''}"><span class="num">${esc(t.nome)}</span><span class="q">a partir de ${+t.min} pts</span><span>${esc(t.premio)}</span></div>`).join('')}</div>
@@ -442,6 +501,11 @@ function colabDlg(email) { colabOpen = email; openId = null; const ym = tp === '
   show(esc(c.nome), `<div class="pl">${esc(email)} · ${esc(PAPEIS[c.papel] || 'Colaborador')} · números de ${PER[tp]}</div>
   <div class="stats"><div><span class="num">${nf(c.q)}</span><small>${esc(U())}s vendidas</small></div><div><span class="num">${c.n}</span><small>pedidos (${c.nPed} no total)</small></div><div><span class="num">${c.vis}</span><small>visitas</small></div><div><span class="num">${brl(c.v)}</span><small>vendido</small></div>
   <div><span class="num">${c.pts.length}</span><small>pontos no nome dele</small></div><div><span class="num">${c.at}</span><small>desses ativos</small></div><div><span class="num">${c.novos.length}</span><small>conquistados ${PER[tp]}</small></div><div><span class="num" style="color:${c.venc ? 'var(--brick)' : 'inherit'}">${brl(c.rec)}</span><small>a receber${c.venc ? ` · ${brl(c.venc)} vencido` : ''}</small></div></div>
+  ${(() => { const k = estoqueDe(email), T = { e: 'Entregou', d: 'Devolveu', p: 'Pagou' };
+   return `<h3>Mercadoria com ele</h3><div class="card"><div class="stats" style="margin:0"><div><span class="num">${nf(k.com)}</span><small>${esc(Us(k.com))} com ele agora</small></div><div><span class="num" style="color:${k.aPagar > 0 ? 'var(--brick)' : 'inherit'}">${brl(Math.max(0, k.aPagar))}</span><small>${k.aPagar < 0 ? `crédito de ${brl(-k.aPagar)}` : 'falta pagar'}</small></div><div><span class="num">${nf(k.ent)}</span><small>pegou${k.ini ? ' desde ' + fd(k.ini) : ''}</small></div><div><span class="num">${nf(k.vend)}</span><small>vendeu (pedidos dele)</small></div></div>
+   ${k.com < 0 ? `<div class="flag">Ele registrou mais vendas do que a mercadoria entregue no app. Falta lançar alguma entrega.</div>` : ''}
+   <div class="cb" data-adm><button class="btn sm ink" data-act="carga" data-id="${esc(email)}" data-v="e">Entregar mercadoria</button><button class="btn sm sun" data-act="carga" data-id="${esc(email)}" data-v="p">Receber pagamento</button><button class="btn sm line" data-act="carga" data-id="${esc(email)}" data-v="d">Devolução</button></div>
+   ${k.n ? `<ul class="hist">${[...k.mv].sort((a, b) => a.d < b.d ? 1 : -1).slice(0, 25).map(m => `<li><span><b>${fd(m.d)}</b> · ${T[m.t]} ${m.t === 'p' ? `<b>${brl(m.v)}</b>${m.fp ? ' · ' + esc(m.fp) : ''}` : `${nf(m.q)} × ${esc(prodDe(m.prod)?.d || m.prod)} · ${brl((+m.q || 0) * (+m.pu || 0))}`}${m.o ? `<br><span class="pl">${esc(m.o)}</span>` : ''}</span><button class="lk" data-adm data-act="delMov" data-id="${esc(m.id)}" data-v="${esc(email)}">Apagar</button></li>`).join('')}</ul>` : '<p class="pl">Nenhuma entrega registrada ainda.</p>'}</div>` })()}
   <h3>Bonificação de ${esc(nomeMes(ym))}</h3>
   <div class="card"><div class="ct bvct"><div>${tierV(b.nv)} <b style="font-size:20px;margin-left:6px">${b.pts} pts</b><div class="pl" style="margin-top:6px">${progV(b)}</div></div><div class="due"><small>prêmio</small><b style="display:block;max-width:220px">${esc(cfg.bv.niveis[b.nv].premio)}</b></div></div>
    <div class="meta"><span><b>${nf(b.cx)}</b> ${esc(Us(b.cx))} pagas × ${+cfg.bv.a}</span><span><b>${b.novos}</b> pontos novos × ${+cfg.bv.b}</span><span><b>${b.prosp}</b> prospecções × ${+cfg.bv.c}</span><span><b>${b.vis}</b> visitas × ${+cfg.bv.d}</span></div>
@@ -453,11 +517,12 @@ function colabDlg(email) { colabOpen = email; openId = null; const ym = tp === '
     return `<li><span><button class="nm" style="font-size:15px" data-act="open" data-id="${esc(p.id)}">${esc(p.nome)}</button><br><span class="pl">${esc(lugar(p))}${s?.last ? ` · último pedido ${fd(s.last.d)}` : ''}${s?.qtd ? ` · ${nf(s.qtd)} ${esc(Us(s.qtd))} no total` : ''}</span></span><span>${pill(p.status)}</span></li>` }).join('')}</ul>` : '<p class="pl">Nenhum ponto no nome dele. Defina em cada ponto, no campo "Conquistado por".</p>'}
   <h3>Atividade recente</h3>${at.length ? `<ul class="hist">${at.map(e => `<li><span><b>${fd(e.d)}</b> · ${esc(pdvs.get(e.pdv)?.nome || 'Ponto removido')}<br><span class="pl">${e.t === 'v' ? 'Visita' : `Pedido de ${nf(e.q)} ${esc(Us(+e.q))}${+e.v ? ' · ' + brl(e.v) : ''}${e.pg === 'receber' ? ' · a receber' : ''}`}${has(e.s) ? ` · sobra ${nf(e.s)}` : ''}</span></span></li>`).join('')}</ul>` : '<p class="pl">Nenhum registro ainda.</p>'}`) }
 
-const V = { inicio: vInicio, time: vTime, notas: vNotas, repor: vRepor, pontos: vPontos, ranking: vRanking, bonus: vBonus, triagem: vTriagem, equipe: vEquipe, ajustes: vAjustes, mais: vMais };
-const cur = () => { const h = location.hash.slice(1); return V[h] ? h : 'inicio' };
+const V = { inicio: vInicio, time: vTime, produtos: vProdutos, notas: vNotas, repor: vRepor, pontos: vPontos, ranking: vRanking, bonus: vBonus, triagem: vTriagem, equipe: vEquipe, ajustes: vAjustes, mais: vMais };
+const SO_GEST = ['ranking', 'bonus', 'triagem', 'ajustes', 'notas', 'equipe', 'time', 'produtos'];
+const cur = () => { const h = location.hash.slice(1); return V[h] && !(me && !can.gest() && SO_GEST.includes(h)) ? h : 'inicio' };
 function render() {
   if (!me || $('#app').hidden) return; derive(); kpis(); const v = cur(); document.body.classList.toggle('v-inicio', v === 'inicio'); if (v === 'inicio' && !render.f) { render.f = 1; document.body.classList.add('first'); setTimeout(() => document.body.classList.remove('first'), 700) }
-  const sub = ['ranking', 'triagem', 'equipe', 'ajustes', 'mais', 'notas', 'time'].includes(v);
+  const sub = ['ranking', 'triagem', 'equipe', 'ajustes', 'mais', 'notas', 'time', 'produtos'].includes(v);
   document.querySelectorAll('#tabs a').forEach(a => { const h = a.getAttribute('href'); a.classList.toggle('on', h === '#' + v || (sub && h === '#mais')) });
   const ae = document.activeElement, id = ae?.id, pos = ae?.selectionStart;
   $('#view').innerHTML = V[v]();
@@ -531,7 +596,8 @@ function pedForm(pid, oid, ppid) {
   f._its = its;
   const paintIts = () => {
     const ps = produtos();
-    $('#itBox').innerHTML = its.map((i, k) => `<div class="itl"><select data-itp="${k}" aria-label="Produto">${ps.map(p => `<option value="${esc(p.c)}" ${p.c === i.c ? 'selected' : ''}>${esc(p.d)}</option>`).join('')}${ps.some(p => p.c === i.c) ? '' : `<option value="${esc(i.c)}" selected>${esc(i.d)}</option>`}</select>
+    const cats = [...new Set(ps.filter(p => p.ativo !== false).map(p => p.cat || 'Produtos'))];
+    $('#itBox').innerHTML = its.map((i, k) => `<div class="itl"><select data-itp="${k}" aria-label="Produto">${cats.map(c => `<optgroup label="${esc(c)}">${ps.filter(p => p.ativo !== false && (p.cat || 'Produtos') === c).map(p => `<option value="${esc(p.c)}" ${p.c === i.c ? 'selected' : ''}>${esc(p.d)}</option>`).join('')}</optgroup>`).join('')}${ps.some(p => p.c === i.c && p.ativo !== false) ? '' : `<option value="${esc(i.c)}" selected>${esc(i.d)}</option>`}</select>
       <div class="step"><button type="button" data-itd="${k}" data-d="-1">−</button><input data-itq="${k}" type="number" inputmode="decimal" min="0" step="1" value="${i.q || ''}" placeholder="0"><button type="button" data-itd="${k}" data-d="1">+</button></div>
       <label class="pu">R$ unid.<input data-itu="${k}" type="number" inputmode="decimal" min="0" step="0.01" value="${i.pu ? (+i.pu).toFixed(2) : ''}" placeholder="0,00"></label>
       <span class="lt">${brl((+i.q || 0) * (+i.pu || 0))}</span>${its.length > 1 ? `<button type="button" class="lk" data-itx="${k}">Remover</button>` : ''}</div>`).join('') + `<button type="button" class="btn sm line" data-itadd>+ Outro produto</button>`;
@@ -555,8 +621,8 @@ function pedForm(pid, oid, ppid) {
     else { box.innerHTML = `<label>Ponto de venda<input id="pdvQ" type="search" placeholder="Digite o nome, bairro ou cidade" autocomplete="off"></label><div class="pick" id="pdvRes"></div>`; const q = $('#pdvQ'); q.addEventListener('input', find); find(); setTimeout(() => q.focus(), 50) }
     $('#pdvTroca')?.addEventListener('click', () => { st.pdv = ''; paint() });
   };
-  const find = () => { const q = ($('#pdvQ')?.value || '').toLowerCase().trim(), all = [...pdvs.values()].filter(p => p.status !== 'fechou');
-    const l = (q ? all.filter(p => [p.nome, p.bairro, p.cidade].join(' ').toLowerCase().includes(q)) : all.filter(p => p.status === 'ativo').sort((a, b) => (M.get(a.id).dAte ?? 1e9) - (M.get(b.id).dAte ?? 1e9))).slice(0, 8);
+  const find = () => { const q = ($('#pdvQ')?.value || '').toLowerCase().trim(), all = [...pdvs.values()].filter(p => p.status !== 'fechou'), mine = can.gest() ? all : meusP();
+    const l = (q ? (can.gest() || q.length >= 3 ? all : mine).filter(p => [p.nome, p.bairro, p.cidade].join(' ').toLowerCase().includes(q)) : (can.gest() ? all.filter(p => p.status === 'ativo') : mine).sort((a, b) => (M.get(a.id).dAte ?? 1e9) - (M.get(b.id).dAte ?? 1e9))).slice(0, 8);
     $('#pdvRes').innerHTML = l.length ? l.map(p => `<button type="button" data-pick="${esc(p.id)}">${esc(p.nome)}<small>${esc(lugar(p))} · ${esc(ST[p.status])}</small></button>`).join('') : '<p class="pl">Nenhum ponto encontrado. Cadastre em + Ponto.</p>' };
   f.addEventListener('click', e => {
     const b = e.target.closest('button'); if (!b) return;
@@ -636,6 +702,12 @@ document.addEventListener('submit', async e => {
     for (let i = 1; i < 4; i++) if (c.niveis[i].min <= c.niveis[i - 1].min) return toast('Cada nível precisa de mais pontos que o anterior.');
     return fire(setDoc(doc(db, 'config', 'geral'), c), 'Ajustes salvos') }
   if (f.id === 'teamF') return addMember(v, f);
+  if (f.id === 'cargaF') { const em = f.dataset.em, t = f.dataset.t, m = { id: rid(), em, t, d: v.d, o: (v.o || '').trim(), por: me.email };
+    if (t === 'p') Object.assign(m, { v: +v.v || 0, fp: v.fp }); else Object.assign(m, { prod: v.prod, q: +v.q || 0, pu: +v.pu || 0 });
+    salvaCargas([...cargas, m], t === 'e' ? 'Entrega registrada' : t === 'p' ? 'Pagamento registrado' : 'Devolução registrada'); cargas = [...cargas, m]; return colabDlg(em) }
+  if (f.id === 'prodF2') { const l = clone(produtos()), k = f.dataset.k, p = { c: v.c.trim().toUpperCase(), d: v.d.trim(), cat: (v.cat || '').trim() || 'Produtos', un: (v.un || 'UN').trim().toUpperCase(), p: +v.p || 0, sug: +v.sug || 0, ncm: (v.ncm || '').trim(), f: v.f === '' ? 1 : +v.f, ativo: !!v.ativo };
+    if (l.some((x, i) => x.c === p.c && String(i) !== k)) return toast('Já existe um produto com esse código.');
+    if (k === '') l.push(p); else l[+k] = p; dlg.close(); return fire(setDoc(doc(db, 'config', 'geral'), { ...cfg, produtos: l }), 'Produto salvo') }
   if (f.id === 'empF') { const e = {}; for (const k of ['razao', 'doc', 'ie', 'endereco', 'bairro', 'cidade', 'uf', 'cep', 'tel', 'email', 'pix', 'rodape']) e[k] = (v[k] || '').trim(); e.uf = e.uf.toUpperCase();
     return fire(setDoc(doc(db, 'config', 'geral'), { ...cfg, empresa: e, controlaNF: !!v.controlaNF }), 'Dados da empresa salvos') }
   if (f.id === 'prodF') { const l = produtos().map((_, k) => ({ c: v['c' + k].trim(), d: v['d' + k].trim(), un: (v['un' + k] || 'UN').trim().toUpperCase(), p: +v['p' + k] || 0, ncm: (v['ncm' + k] || '').trim(), f: v['f' + k] === '' ? 1 : +v['f' + k] }));
@@ -694,6 +766,12 @@ document.addEventListener('click', e => {
   if (act === 'ip') { ip = v; return render() }
   if (act === 'tp') { tp = v; return render() }
   if (act === 'colab') return colabDlg(id);
+  if (act === 'ilf') { ilf = v; return render() }
+  if (act === 'carga' && can.admin()) return cargaForm(id, v);
+  if (act === 'delMov' && can.admin()) { if (!confirm('Apagar este lançamento de mercadoria?')) return; salvaCargas(cargas.filter(m => m.id !== id), 'Lançamento apagado'); return colabDlg(v) }
+  if (act === 'prodNovo' && can.admin()) return prodForm('');
+  if (act === 'prodEd' && can.admin()) return prodForm(id);
+  if (act === 'prodCat' && can.admin()) { const l = clone(produtos()), add = CATALOGO_NOV26.filter(c => !l.some(p => p.c === c.c)); const v0 = l.find(p => p.c === 'SDF-CX'); if (v0) { v0.cat = v0.cat || 'Sedas'; if (add.some(p => p.f === 1)) v0.ativo = false } return fire(setDoc(doc(db, 'config', 'geral'), { ...cfg, produtos: [...l, ...add] }), `${add.length} produtos do catálogo carregados`) }
   if (act === 'bvPago' && can.admin()) { const val = prompt('Valor ou prêmio entregue (opcional):', cfg.bv.niveis[bonusV(id, v).nv].premio) ; if (val === null) return; const m = { ...(cfg.pagBV || {}), [v + '|' + id]: { data: today(), valor: val.trim(), por: me.email, pts: bonusV(id, v).pts } }; return fire(setDoc(doc(db, 'config', 'geral'), { ...cfg, pagBV: m }), 'Bônus registrado como pago') }
   if (act === 'bvDesfaz' && can.admin()) { const m = { ...(cfg.pagBV || {}) }; delete m[v + '|' + id]; return fire(setDoc(doc(db, 'config', 'geral'), { ...cfg, pagBV: m }), 'Registro de bônus desfeito') }
   if (act === 'iv') { iv = v; return render() }
@@ -710,7 +788,7 @@ document.addEventListener('click', e => {
   if (act === 'nfOk' && can.admin()) return nfForm(a.dataset.p, id);
   if (act === 'csvNF' && can.admin()) return csvNF();
   if (act === 'prodAdd' && can.admin()) { const l = clone(produtos()); l.push({ c: 'NOVO-' + (l.length + 1), d: 'Novo produto', un: 'UN', p: 0, ncm: '', f: 0 }); return fire(setDoc(doc(db, 'config', 'geral'), { ...cfg, produtos: l }), 'Produto adicionado') }
-  if (act === 'prodDel' && can.admin()) { const l = clone(produtos()); l.splice(+id, 1); return fire(setDoc(doc(db, 'config', 'geral'), { ...cfg, produtos: l }), 'Produto removido') }
+  if (act === 'prodDel' && can.admin()) { if (produtos().length < 2) return toast('Precisa ficar pelo menos um produto.'); const l = clone(produtos()); l.splice(+id, 1); if (dlg.open) dlg.close(); return fire(setDoc(doc(db, 'config', 'geral'), { ...cfg, produtos: l }), 'Produto removido') }
   if (act === 'csv') { const q = x => `"${String(x ?? '').replace(/"/g, '""')}"`; let rows;
     if (v === 'pdv') rows = [['Nome', 'Status', 'Tipo', 'Contato', 'Bairro', 'Cidade', 'UF', 'Endereço', 'Redes', 'CPF/CNPJ', 'Pedidos', 'Total', 'Último pedido', 'Próxima reposição', 'Giro/semana', 'Pontos', 'Nível', 'Obs'], ...[...pdvs.values()].map(p => { const s = M.get(p.id); return [p.nome, ST[p.status], p.tipo, p.contato, p.bairro, p.cidade, p.uf, p.endereco, p.redes, p.doc, s.n, s.qtd, s.last?.d || '', s.prox || '', s.giro ? nf(s.giro) : '', s.pts, cfg.niveis[s.nivel].nome, p.obs] })];
     else rows = [['Pedido', 'Data', 'Tipo', 'Ponto', 'Cidade', 'Quantidade', 'Valor', 'Sobra', 'Pagamento', 'Registrado por', 'Obs'], ...evs.slice().sort(byD).map(o => { const p = pdvs.get(o.pdv) || {}; return [o.n || '', o.d, o.t === 'v' ? 'Visita' : 'Pedido', p.nome, p.cidade, o.q, o.v, o.s ?? '', o.pg || '', o.pn || o.por || '', o.o] })];
