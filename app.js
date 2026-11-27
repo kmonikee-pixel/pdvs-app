@@ -24,7 +24,18 @@ const DEFV = { a: 1, b: 15, c: 3, d: 1, niveis: [
   { nome: 'Firme', min: 60, premio: 'Bônus de R$ 50' },
   { nome: 'Brabo', min: 150, premio: 'Bônus de R$ 150' },
   { nome: 'Lenda', min: 300, premio: 'Bônus de R$ 300 e destaque no Instagram da marca' }] };
-const DEF = { unidade: 'caixa', preco: 0, ciclo: 15, ptsCaixa: 10, ptsPontual: 5, ptsIndicacao: 30, janela: 90, niveis: [
+const EMP_PADRAO = { fantasia: 'Seda de Favela', razao: '', doc: '41.048.258/0001-45', ie: '15.157.07-0', endereco: 'Rua Mário Marrocos, 56', bairro: 'Pião', cidade: 'São Gonçalo', uf: 'RJ', cep: '24455-520', tel: '(21) 99777-4435', email: 'sedadefavela@gmail.com', site: 'sedadefavela.com.br', insta: '@sedadefavela', pix: '', rodape: '' };
+const DEFC = { niveis: [
+  { nome: 'Parceiro', med: 0, meses: 0, pont: 0, ben: 'Preço de tabela e visita no ciclo de reposição' },
+  { nome: 'Parceiro Fiel', med: 3, meses: 2, pont: 80, ben: '1 piteira de papel de brinde a cada 5 displays no pedido' },
+  { nome: 'Ponto Forte', med: 8, meses: 3, pont: 90, ben: 'Preço da faixa de 5 displays em qualquer pedido' },
+  { nome: 'Ponto Referência', med: 15, meses: 5, pont: 90, ben: 'Preço da faixa de 15 displays, display de vitrine e destaque no Instagram da marca' }], ind: '1 display de brinde quando o ponto indicado fizer o 2º pedido' };
+const DEFM = { novo: 5, travaDias: 15, niveis: [
+  { nome: 'Começando', min: 0, premio: 'Sem bônus no mês' },
+  { nome: 'Meta batida', min: 60, premio: 'R$ 60' },
+  { nome: 'Destaque', min: 120, premio: 'R$ 150' },
+  { nome: 'Referência', min: 200, premio: 'R$ 300 e destaque no Instagram da marca' }] };
+const DEF = { prazo: 15, unidade: 'caixa', preco: 0, ciclo: 15, ptsCaixa: 10, ptsPontual: 5, ptsIndicacao: 30, janela: 90, niveis: [
   { nome: 'Pista', min: 0, premio: 'Preço de tabela e visita garantida no ciclo' },
   { nome: 'Bonde', min: 100, premio: 'Brinde em cada pedido (piteira, isqueiro ou bag)' },
   { nome: 'Quebrada', min: 250, premio: '1 caixa bônus a cada 10 compradas' },
@@ -32,9 +43,10 @@ const DEF = { unidade: 'caixa', preco: 0, ciclo: 15, ptsCaixa: 10, ptsPontual: 5
 
 /* ---------- estado ---------- */
 let app, auth, db, me = null, started = false, unsubs = [];
-let pdvs = new Map(), evs = [], peds = [], bons = [], cfg = { ...clone(DEF), bv: clone(DEFV) }, acessos = new Map(), M = new Map();
-let impTxt = '', pending = 0, cached = true, F = { q: '', st: '', cid: '', tipo: '', sort: 'nome' }, rcid = '', per = 90, skip = new Set(), undo = null, openId = null, installEvt = null, ip = 'mes', iv = 'eu', tp = 'mes', colabOpen = null, cargas = [], ilf = 'ativo';
-const can = { write: () => me && me.papel !== 'leitura', admin: () => me && me.papel === 'admin', gest: () => me && me.papel !== 'vendedor' };
+let pdvs = new Map(), evs = [], peds = [], bons = [], cfg = { ...clone(DEF), bv: clone(DEFV), clube: clone(DEFC), meta: clone(DEFM) }, acessos = new Map(), M = new Map();
+let impTxt = '', pending = 0, cached = true, F = { q: '', st: '', cid: '', tipo: '', sort: 'nome', ven: '' }, rcid = '', per = 90, skip = new Set(), undo = null, openId = null, installEvt = null, ip = 'mes', iv = 'emp', tp = 'mes', colabOpen = null, cargas = [], ilf = 'ativo';
+const can = { write: () => me && me.papel !== 'leitura', admin: () => me && me.papel === 'admin', gest: () => me && me.papel !== 'vendedor', dono: () => me && me.papel === 'admin' && !!me.vende };
+const papelNome = a => a?.papel === 'admin' && a?.vende ? 'Administrador e vendedor' : PAPEIS[a?.papel] || 'Colaborador';
 
 /* ---------- inicialização ---------- */
 if ('serviceWorker' in navigator) addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(() => {}));
@@ -76,13 +88,13 @@ function resolveRole(u) {
   gate('Conferindo seu acesso…');
   unsubs.push(onSnapshot(doc(db, 'acessos', email), s => {
     const a = s.exists() ? s.data() : null;
-    if (isRoot) me = { email, nome: a?.nome || 'Administradora', papel: 'admin' };
+    if (isRoot) me = { email, nome: a?.nome || 'Administradora', papel: 'admin', vende: !!a?.vende };
     else if (!a) { me = null; return gate(`O e-mail ${email} ainda não tem acesso. Peça para a administradora liberar.`, { out: true }) }
     else if (!a.ativo) { me = null; return gate('Seu acesso está desativado. Fale com a administradora.', { out: true }) }
-    else me = { email, nome: a.nome || email, papel: a.papel || 'vendedor' };
+    else me = { email, nome: a.nome || email, papel: a.papel || 'vendedor', vende: !!a.vende };
     document.body.classList.toggle('ro', !can.write()); document.body.classList.toggle('notadm', !can.admin()); document.body.classList.toggle('vend', !can.gest());
-    $('#whoName').textContent = me.nome === PAPEIS[me.papel] ? me.nome : `${me.nome} · ${PAPEIS[me.papel]}`;
-    document.querySelectorAll('[data-admin]').forEach(a => a.hidden = !can.admin());
+    $('#whoName').textContent = me.nome === papelNome(me) ? me.nome : `${me.nome} · ${papelNome(me)}`;
+    document.querySelectorAll('[data-admin]').forEach(a => a.hidden = !can.admin()); document.body.classList.toggle('adm', can.admin());
     if (!started) startData();
     $('#gate').hidden = true; $('#app').hidden = false; render();
   }, e => gate(isRoot ? 'Não consegui ler o banco. Confira se as regras de segurança foram publicadas no Firebase.' : 'Sem permissão para acessar. Fale com a administradora.', { out: true })));
@@ -98,7 +110,7 @@ function startData() {
   }, fail));
   unsubs.push(onSnapshot(doc(db, 'config', 'cargas'), s => { cargas = s.exists() && Array.isArray(s.data().mov) ? s.data().mov : []; render() }, fail));
   unsubs.push(onSnapshot(collection(db, 'bonus'), s => { bons = s.docs.map(d => ({ ...d.data(), id: d.id })); render() }, fail));
-  unsubs.push(onSnapshot(doc(db, 'config', 'geral'), s => { cfg = s.exists() ? { ...clone(DEF), ...s.data() } : clone(DEF); if (!Array.isArray(cfg.niveis) || cfg.niveis.length !== 4) cfg.niveis = clone(DEF.niveis); cfg.bv = { ...clone(DEFV), ...(cfg.bv || {}) }; if (!Array.isArray(cfg.bv.niveis) || cfg.bv.niveis.length !== 4) cfg.bv.niveis = clone(DEFV.niveis); render() }, fail));
+  unsubs.push(onSnapshot(doc(db, 'config', 'geral'), s => { cfg = s.exists() ? { ...clone(DEF), ...s.data() } : clone(DEF); if (!Array.isArray(cfg.niveis) || cfg.niveis.length !== 4) cfg.niveis = clone(DEF.niveis); cfg.bv = { ...clone(DEFV), ...(cfg.bv || {}) }; if (!Array.isArray(cfg.bv.niveis) || cfg.bv.niveis.length !== 4) cfg.bv.niveis = clone(DEFV.niveis); cfg.clube = { ...clone(DEFC), ...(cfg.clube || {}) }; if (!Array.isArray(cfg.clube.niveis) || cfg.clube.niveis.length !== 4) cfg.clube.niveis = clone(DEFC.niveis); cfg.meta = { ...clone(DEFM), ...(cfg.meta || {}) }; if (!Array.isArray(cfg.meta.niveis) || cfg.meta.niveis.length !== 4) cfg.meta.niveis = clone(DEFM.niveis); render() }, fail));
   if (can.admin()) unsubs.push(onSnapshot(collection(db, 'acessos'), s => { acessos = new Map(s.docs.map(d => [d.id, d.data()])); if (cur() === 'equipe') render() }, fail));
 }
 function flatten() { evs = []; for (const p of pdvs.values()) for (const e of (p.hist || [])) evs.push({ ...e, pdv: p.id }); peds = evs.filter(e => e.t !== 'v') }
@@ -113,6 +125,7 @@ addEventListener('online', () => { net(); render() }); addEventListener('offline
 /* ---------- cálculos ---------- */
 const U = () => cfg.unidade || 'caixa';
 const Us = n => n === 1 ? U() : U() + 's';
+function clubeNivel(s) { let n = 0; cfg.clube.niveis.forEach((t, i) => { if (i && s.med >= +t.med && s.meses >= +t.meses && (s.pont === null || s.pont >= +t.pont)) n = i }); return s.n ? n : 0 }
 function nivelDe(pts) { let n = 0; cfg.niveis.forEach((t, i) => { if (pts >= +t.min) n = i }); return n }
 const byD = (a, b) => a.d < b.d ? -1 : a.d > b.d ? 1 : (a.em || 0) - (b.em || 0);
 function derive() {
@@ -141,13 +154,16 @@ function derive() {
       s.dAte = D(s.prox) - t;
     }
     ps.forEach((o, i) => { if (t - D(o.d) <= j) { s.pts += (+o.q || 0) * (+cfg.ptsCaixa || 0); if (i && D(o.d) - D(ps[i - 1].d) <= s.ciclo + 3) s.pts += +cfg.ptsPontual || 0 } });
-    s.ind = indic.get(p.id) || 0; s.pts += s.ind * (+cfg.ptsIndicacao || 0); s.nivel = nivelDe(s.pts);
+    s.ind = indic.get(p.id) || 0;
+    { const q90 = ps.filter(o => t - D(o.d) < 90).reduce((a, o) => a + (+o.q || 0), 0), m6 = new Set(ps.filter(o => t - D(o.d) < 183).map(o => o.d.slice(0, 7)));
+      const prz = ps.filter(o => t - D(o.d) < 183 && o.venc && (o.pg === 'pago' || D(o.venc) < t)), ok = prz.filter(o => o.pg === 'pago' && (!o.pgEm || D(o.pgEm) <= D(o.venc) + 3)).length;
+      s.med = q90 / 3; s.meses = m6.size; s.pont = prz.length ? Math.round(ok / prz.length * 100) : null; s.nivel = clubeNivel(s) }
     M.set(p.id, s);
   }
 }
 const FP = ['PIX', 'Dinheiro', 'Cartão', 'Boleto', 'A prazo'];
 const brD = s => s ? s.slice(8, 10) + '/' + s.slice(5, 7) + '/' + s.slice(0, 4) : '';
-const emp = () => cfg.empresa || {};
+const emp = () => { const e = { ...EMP_PADRAO }; for (const [k, v] of Object.entries(cfg.empresa || {})) if (has(v) && String(v).trim()) e[k] = v; return e };
 function produtos() { const l = Array.isArray(cfg.produtos) && cfg.produtos.length ? cfg.produtos : [{ c: 'SDF-CX', d: 'Seda de Favela (caixa)', cat: 'Sedas', un: 'CX', p: +cfg.preco || 0, ncm: '4813.10.00', f: 1 }]; return l }
 const prodDe = c => produtos().find(x => x.c === c);
 function itensDe(o) { if (Array.isArray(o.it) && o.it.length) return o.it; if (o.t === 'v' || !+o.q) return []; const p0 = produtos()[0]; return [{ c: p0.c, d: p0.d, un: p0.un, ncm: p0.ncm, q: +o.q, pu: +o.q ? (+o.v || 0) / +o.q : 0 }] }
@@ -164,7 +180,7 @@ function faltaNF(p) { const e = emp(), f = [];
 const qtdEm = (id, dias) => { const t = D(today()); return (M.get(id)?.ps || []).filter(o => dias === 0 || t - D(o.d) < dias).reduce((a, o) => a + (+o.q || 0), 0) };
 const lugar = p => [p.bairro, p.cidade && (p.cidade + (p.uf ? '/' + p.uf : ''))].filter(Boolean).join(' · ') || 'Sem local';
 const pill = st => `<span class="pill p-${esc(st)}">${esc(ST[st] || st)}</span>`;
-const tier = i => `<span class="tier ${i === 3 ? 't3' : ''}">${esc(cfg.niveis[i]?.nome)}</span>`;
+const tier = i => `<span class="tier ${i === 3 ? 't3' : ''}">${esc(cfg.clube.niveis[i]?.nome)}</span>`;
 function wa(p, msg) { const d = String(p.contato || '').replace(/\D/g, ''); if (d.length < 10) return ''; const n = d.length <= 11 ? '55' + d : d;
   return `<a class="btn sm line" href="https://wa.me/${n}?text=${encodeURIComponent(msg || 'Oi, tudo certo? Aqui é da Seda de Favela. Passando pra ver como tá o estoque de seda aí. Bora repor?')}" target="_blank" rel="noopener">WhatsApp</a>` }
 const mapa = p => `<a class="btn sm line" href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(p.endereco || [p.nome, p.bairro, p.cidade, p.uf].filter(Boolean).join(' '))}" target="_blank" rel="noopener">Mapa</a>`;
@@ -183,7 +199,7 @@ function kpis() {
   <div class="kpi"><span class="num">${rec ? brl(rec) : 'R$ 0'}</span><small>a receber</small></div>
   <button class="kpi" data-go="triagem"><span class="num">${ver}</span><small>a verificar · ${pro} prospecção</small></button>`;
   $('#sub').textContent = can.gest() ? `${all.length} pontos · ${peds.length} pedidos registrados` : `${meusP().length} pontos seus · ${peds.filter(o => o.por === me.email).length} pedidos seus`;
-  const tb = $('#tabs a[data-tri]'); tb.innerHTML = 'Triagem' + (ver ? ` <b>${ver}</b>` : '');
+  const tb = $('#tabs a[data-cob]'); if (tb) { const n = receber().filter(o => diasPara(o) !== null && diasPara(o) <= 1).length; tb.querySelector('b')?.remove(); if (n) tb.insertAdjacentHTML('beforeend', ` <b>${n}</b>`) }
 }
 
 /* ---------- telas ---------- */
@@ -216,7 +232,7 @@ function vRepor() {
 
 function vPontos() {
   const all = can.gest() ? [...pdvs.values()] : meusP(), cids = [...new Set(all.map(p => p.cidade).filter(Boolean))].sort(), q = F.q.trim().toLowerCase();
-  let l = all.filter(p => (!F.st || p.status === F.st) && (!F.cid || p.cidade === F.cid) && (!F.tipo || p.tipo === F.tipo) && (!q || [p.nome, p.bairro, p.cidade, p.endereco, p.contato].join(' ').toLowerCase().includes(q)));
+  let l = all.filter(p => (!F.st || p.status === F.st) && (!F.cid || p.cidade === F.cid) && (!F.tipo || p.tipo === F.tipo) && (!F.ven || (F.ven === '-' ? !conquistador(p) : conquistador(p) === F.ven)) && (!q || [p.nome, p.bairro, p.cidade, p.endereco, p.contato].join(' ').toLowerCase().includes(q)));
   const S = { nome: (a, b) => a.nome.localeCompare(b.nome), prox: (a, b) => (M.get(a.id).dAte ?? 1e9) - (M.get(b.id).dAte ?? 1e9), compra: (a, b) => qtdEm(b.id, 90) - qtdEm(a.id, 90), ult: (a, b) => (M.get(b.id).last?.d || '') > (M.get(a.id).last?.d || '') ? 1 : -1 };
   l.sort(S[F.sort]);
   const opt = (v, t, c) => `<option value="${esc(v)}" ${c === v ? 'selected' : ''}>${esc(t)}</option>`;
@@ -225,17 +241,18 @@ function vPontos() {
   <select id="fst" aria-label="Status">${opt('', 'Todos os status', F.st)}${Object.entries(ST).map(([k, v]) => opt(k, v, F.st)).join('')}</select>
   <select id="fcid" aria-label="Cidade">${opt('', 'Todas as cidades', F.cid)}${cids.map(c => opt(c, c, F.cid)).join('')}</select>
   <select id="ftipo" aria-label="Tipo">${opt('', 'Todos os tipos', F.tipo)}${TIPOS.map(t => opt(t, t, F.tipo)).join('')}</select>
+  ${can.gest() ? `<select id="fven" aria-label="Conquistado por">${opt('', 'Todos os vendedores', F.ven)}${opt('-', 'Sem vendedor definido', F.ven)}${colabs().map(e => opt(e, nomeDe(e), F.ven)).join('')}</select>` : ''}
   <select id="fsort" aria-label="Ordenar">${opt('nome', 'A a Z', F.sort)}${opt('prox', 'Próxima reposição', F.sort)}${opt('compra', 'Mais compram (90 dias)', F.sort)}${opt('ult', 'Pedido mais recente', F.sort)}</select>
   <button class="btn line" data-w data-act="newPdv">+ Ponto</button></div>
-  ${l.length ? `<table class="stack"><thead><tr><th>Ponto</th><th>Status</th><th>Tipo</th><th>Último pedido</th><th>Repor</th><th class="r">${esc(U())}s 90d</th><th>Nível</th></tr></thead><tbody>
-  ${l.map(p => { const s = M.get(p.id); return `<tr tabindex="0" data-act="open" data-id="${esc(p.id)}"><td><b>${esc(p.nome)}</b><div class="pl">${esc(lugar(p))}</div></td><td>${pill(p.status)}${p.flags?.length ? ' <span class="pill">!</span>' : ''}</td><td>${esc(p.tipo)}</td><td>${s.last ? fd(s.last.d) : ''}</td><td>${s.prox && p.status === 'ativo' ? `${fd(s.prox)} <span class="pl">${rel(s.dAte)}</span>` : ''}</td><td class="r">${s.n ? nf(qtdEm(p.id, 90)) : ''}</td><td>${s.n ? tier(s.nivel) : ''}</td></tr>` }).join('')}</tbody></table>` : `<div class="empty">Nenhum ponto com esses filtros.</div>`}` }
+  ${l.length ? `<table class="stack"><thead><tr><th>Ponto</th><th>Status</th>${can.gest() ? '<th>Conquistado por</th>' : ''}<th>Tipo</th><th>Último pedido</th><th>Repor</th><th class="r">${esc(U())}s 90d</th><th>Nível</th></tr></thead><tbody>
+  ${l.map(p => { const s = M.get(p.id); return `<tr tabindex="0" data-act="open" data-id="${esc(p.id)}"><td><b>${esc(p.nome)}</b><div class="pl">${esc(lugar(p))}</div></td><td>${pill(p.status)}${p.flags?.length ? ' <span class="pill">!</span>' : ''}</td>${can.gest() ? `<td>${conquistador(p) ? esc(nomeDe(conquistador(p))) : '<span class="pl">não definido</span>'}</td>` : ''}<td>${esc(p.tipo)}</td><td>${s.last ? fd(s.last.d) : ''}</td><td>${s.prox && p.status === 'ativo' ? `${fd(s.prox)} <span class="pl">${rel(s.dAte)}</span>` : ''}</td><td class="r">${s.n ? nf(qtdEm(p.id, 90)) : ''}</td><td>${s.n ? tier(s.nivel) : ''}</td></tr>` }).join('')}</tbody></table>` : `<div class="empty">Nenhum ponto com esses filtros.</div>`}` }
 
 function lista(t, rows, fmt) { const mx = Math.max(1, ...rows.map(r => r.v));
-  return `<div class="rk"><h3>${t}</h3>${rows.length ? rows.map((r, i) => `<div class="rr" ${r.id ? `data-act="open" data-id="${esc(r.id)}"` : ''}><i>${i + 1}</i><span class="n">${esc(r.n)}</span><span class="v">${fmt(r.v)}</span><div class="tr"><div style="width:${(r.v / mx * 100).toFixed(1)}%"></div></div></div>`).join('') : '<p class="pl">Sem pedidos nesse período.</p>'}</div>` }
+  return `<div class="rk"><h3>${t} <span>${rows.length}</span></h3>${rows.length ? '<div class="scrollbox">' + rows.map((r, i) => `<div class="rr" ${r.id ? `data-act="open" data-id="${esc(r.id)}"` : ''}><i>${i + 1}</i><span class="n">${esc(r.n)}</span><span class="v">${fmt(r.v)}</span><div class="tr"><div style="width:${(r.v / mx * 100).toFixed(1)}%"></div></div></div>`).join('') + '</div>' : '<p class="pl">Sem pedidos nesse período.</p>'}</div>` }
 function vRanking() {
   const t = D(today()), ps = peds.filter(o => per === 0 || t - D(o.d) < per), agg = new Map(), ven = new Map(), cid = new Map();
   for (const o of ps) { const a = agg.get(o.pdv) || { q: 0, n: 0 }; a.q += +o.q || 0; a.n++; agg.set(o.pdv, a); const v = o.pn || o.por || 'Painel antigo'; ven.set(v, (ven.get(v) || 0) + (+o.q || 0)); const c = pdvs.get(o.pdv)?.cidade || 'Sem cidade'; cid.set(c, (cid.get(c) || 0) + (+o.q || 0)) }
-  const nm = id => pdvs.get(id)?.nome || 'Ponto removido', top = a => a.sort((x, y) => y.v - x.v).slice(0, 10);
+  const nm = id => pdvs.get(id)?.nome || 'Ponto removido', top = a => a.sort((x, y) => y.v - x.v);
   const P = [[30, '30 dias'], [90, '90 dias'], [365, '12 meses'], [0, 'Tudo']];
   return `<h2>Ranking</h2><p class="lead">"Mais vendem" é o giro: quanto sai do ponto por semana, medido pela sobra anotada nas visitas.</p>
   <div class="chips">${P.map(([v, l]) => `<button class="chip ${per === v ? 'on' : ''}" data-act="per" data-v="${v}">${l}</button>`).join('')}</div>
@@ -246,15 +263,18 @@ function vRanking() {
   ${lista(`Por cidade (${esc(U())}s)`, top([...cid].map(([n, v]) => ({ n, v }))), nf)}</div>` }
 
 function vBonus() {
-  const at = [...pdvs.values()].filter(p => p.status === 'ativo' && M.get(p.id).n).sort((a, b) => M.get(b.id).pts - M.get(a.id).pts);
-  const cnt = cfg.niveis.map((_, i) => at.filter(p => M.get(p.id).nivel === i).length);
-  return `<h2>Programa de bonificação</h2><p class="lead">Conta os últimos ${+cfg.janela} dias. Cada ${esc(U())} vale <b>${+cfg.ptsCaixa} pts</b>, repor no prazo vale <b>+${+cfg.ptsPontual}</b>, indicar um ponto que virou cliente vale <b>+${+cfg.ptsIndicacao}</b>.</p>
-  <div class="tiers">${cfg.niveis.map((t, i) => `<div class="tc ${i === 3 ? 'top3' : ''}"><span class="num">${esc(t.nome)}</span><span class="q">a partir de ${+t.min} pts · ${cnt[i]} ${cnt[i] === 1 ? 'ponto' : 'pontos'}</span><span>${esc(t.premio)}</span></div>`).join('')}</div>
-  <h3>Clientes no programa <span>${at.length}</span></h3>
-  ${at.length ? `<table class="stack"><thead><tr><th>Ponto</th><th>Nível</th><th class="r">Pontos</th><th>Até o próximo</th><th class="r">${esc(U())}s ${+cfg.janela}d</th><th></th></tr></thead><tbody>${at.map(p => { const s = M.get(p.id), nx = cfg.niveis[s.nivel + 1], b = s.nivel ? +cfg.niveis[s.nivel].min : 0;
-   return `<tr data-act="open" data-id="${esc(p.id)}" tabindex="0"><td><b>${esc(p.nome)}</b><div class="pl">${esc(lugar(p))}</div></td><td>${tier(s.nivel)}</td><td class="r"><b>${s.pts}</b></td><td>${nx ? `<span class="prog"><div style="width:${Math.min(100, (s.pts - b) / (nx.min - b) * 100).toFixed(0)}%"></div></span>${nx.min - s.pts} pts pra ${esc(nx.nome)}` : 'Topo'}</td><td class="r">${nf(qtdEm(p.id, +cfg.janela))}</td><td><button class="btn sm line" data-adm data-act="bonif" data-id="${esc(p.id)}">Bonificar</button></td></tr>` }).join('')}</tbody></table>` : `<div class="empty">Os clientes entram aqui quando estão ativos e têm pedido registrado.</div>`}
+  const C = cfg.clube, at = [...pdvs.values()].filter(p => p.status === 'ativo' && M.get(p.id).n).sort((a, b) => M.get(b.id).nivel - M.get(a.id).nivel || M.get(b.id).med - M.get(a.id).med);
+  const cnt = C.niveis.map((_, i) => at.filter(p => M.get(p.id).nivel === i).length);
+  const falta = (s) => { const nx = C.niveis[s.nivel + 1]; if (!nx) return 'Nível máximo'; const f = [];
+    if (s.med < +nx.med) f.push(`média de ${nf(+nx.med)}/mês (hoje ${nf(s.med)})`); if (s.meses < +nx.meses) f.push(`comprar em ${+nx.meses} dos últimos 6 meses (hoje ${s.meses})`); if (s.pont !== null && s.pont < +nx.pont) f.push(`${+nx.pont}% pago em dia (hoje ${s.pont}%)`);
+    return `Pra ${esc(nx.nome)}: ${f.join(', ')}` };
+  return `<h2>Clube de parceiros</h2><p class="lead">Fidelidade dos pontos de venda. O nível vem do que o ponto faz de verdade: quanto compra por mês (média dos últimos 90 dias), se compra todo mês (últimos 6 meses) e se paga no prazo. Sobe devagar e cai se o ponto parar ou atrasar. Indicação: ${esc(C.ind)}.</p>
+  <div class="tiers">${C.niveis.map((t, i) => `<div class="tc ${i === 3 ? 'top3' : ''}"><span class="num">${esc(t.nome)}</span><span class="q">${i ? `${nf(+t.med)} ${esc(U())}s/mês · compra em ${+t.meses} de 6 meses · ${+t.pont}% em dia` : 'todo ponto ativo com pedido'} · ${cnt[i]} ${cnt[i] === 1 ? 'ponto' : 'pontos'}</span><span>${esc(t.ben)}</span></div>`).join('')}</div>
+  <h3>Pontos no clube <span>${at.length}</span></h3>
+  ${at.length ? `<div class="scrollbox tall"><table class="stack"><thead><tr><th>Ponto</th><th>Nível</th><th class="r">Média/mês</th><th class="r">Meses comprando</th><th class="r">Pago em dia</th><th>Próximo passo</th><th></th></tr></thead><tbody>${at.map(p => { const s = M.get(p.id);
+   return `<tr data-act="open" data-id="${esc(p.id)}" tabindex="0"><td><b>${esc(p.nome)}</b><div class="pl">${esc(lugar(p))}</div></td><td>${tier(s.nivel)}</td><td class="r">${nf(s.med)}</td><td class="r">${s.meses} de 6</td><td class="r">${s.pont === null ? '<span class="pl">só à vista</span>' : s.pont + '%'}</td><td class="pl">${falta(s)}</td><td><button class="btn sm line" data-adm data-act="bonif" data-id="${esc(p.id)}">Bonificar</button></td></tr>` }).join('')}</tbody></table></div>` : `<div class="empty">Os pontos entram aqui quando estão ativos e têm pedido registrado.</div>`}
   <h3>Bonificações entregues <span>${bons.length}</span></h3>
-  ${bons.length ? `<ul class="hist">${[...bons].sort((a, b) => a.data < b.data ? 1 : -1).slice(0, 40).map(b => `<li><span><b>${esc(pdvs.get(b.pdv)?.nome || 'Ponto removido')}</b> · ${fd(b.data)}<br><span class="pl">${esc(b.desc)}</span></span><button class="lk" data-adm data-act="delBon" data-id="${esc(b.id)}">Remover</button></li>`).join('')}</ul>` : `<div class="empty">Quando entregar um prêmio, toque em Bonificar para ficar registrado.</div>`}` }
+  ${bons.length ? `<ul class="hist">${[...bons].sort((a, b) => a.data < b.data ? 1 : -1).slice(0, 40).map(b => `<li><span><b>${esc(pdvs.get(b.pdv)?.nome || 'Ponto removido')}</b> · ${fd(b.data)}<br><span class="pl">${esc(b.desc)}</span></span><button class="lk" data-adm data-act="delBon" data-id="${esc(b.id)}">Remover</button></li>`).join('')}</ul>` : `<div class="empty">Quando entregar um benefício, toque em Bonificar para ficar registrado.</div>`}` }
 
 function vTriagem() {
   const all = [...pdvs.values()].filter(p => p.status === 'verificar').sort((a, b) => (a.linha || 9e9) - (b.linha || 9e9));
@@ -274,15 +294,15 @@ function vEquipe() {
   if (!can.admin()) return `<div class="empty">Só a administradora vê a equipe.</div>`;
   const l = [...acessos].sort((a, b) => (a[1].nome || '').localeCompare(b[1].nome || ''));
   const cnt = new Map(); for (const o of peds) if (o.por) cnt.set(o.por, (cnt.get(o.por) || 0) + 1);
-  return `<h2>Equipe</h2><p class="lead">Cada pessoa entra com o próprio e-mail e senha. <b>Vendedor</b> cadastra pontos, registra pedidos e visitas e faz triagem. <b>Só leitura</b> vê tudo e não altera nada. Desativar corta o acesso na hora, sem apagar o que a pessoa registrou.</p>
+  return `<h2>Acessos</h2><p class="lead">Cada pessoa entra com o próprio e-mail e senha. <b>Administrador e vendedor</b> (dono) vê o painel da empresa e também os próprios números de venda. <b>Vendedor</b> cadastra pontos, registra pedidos e visitas e faz triagem. <b>Só leitura</b> vê tudo e não altera nada. Desativar corta o acesso na hora, sem apagar o que a pessoa registrou.</p>
   <form id="teamF" class="f card" style="padding:18px;margin-bottom:18px">
    <label>Nome<input name="nome" required autocomplete="off"></label>
    <label>E-mail<input name="email" type="email" required autocomplete="off"></label>
-   <label>Papel<select name="papel"><option value="vendedor">Vendedor</option><option value="leitura">Só leitura</option><option value="admin">Administradora</option></select></label>
+   <label>Papel<select name="papel"><option value="vendedor">Vendedor</option><option value="leitura">Só leitura</option><option value="admin">Administradora</option><option value="adminv">Administrador e vendedor (dono)</option></select></label>
    <label>Senha inicial<input name="senha" minlength="6" required autocomplete="new-password"><small>Mínimo 6 caracteres. Passe para a pessoa e peça para trocar em "Esqueci minha senha".</small></label>
    <div class="fa w"><button class="btn ink">Dar acesso</button></div></form>
   ${l.length ? `<table class="stack"><thead><tr><th>Pessoa</th><th>Papel</th><th>Status</th><th class="r">Registros</th><th></th></tr></thead><tbody>${l.map(([em, a]) => `<tr><td><b>${esc(a.nome)}</b><div class="pl">${esc(em)}</div></td>
-   <td><select data-act="papel" data-id="${esc(em)}" aria-label="Papel" ${em === me.email ? 'disabled' : ''}>${Object.entries(PAPEIS).map(([k, v]) => `<option value="${k}" ${a.papel === k ? 'selected' : ''}>${v}</option>`).join('')}</select></td>
+   <td><select data-act="papel" data-id="${esc(em)}" aria-label="Papel" ${em === me.email ? 'disabled' : ''}>${[...Object.entries(PAPEIS), ['adminv', 'Administrador e vendedor']].map(([k, v]) => `<option value="${k}" ${(a.papel === 'admin' && a.vende ? 'adminv' : a.papel) === k ? 'selected' : ''}>${v}</option>`).join('')}</select></td>
    <td>${a.ativo ? '<span class="pill p-ativo">Ativo</span>' : '<span class="pill p-inativo">Desativado</span>'}</td><td class="r">${cnt.get(em) || 0}</td>
    <td>${em === me.email ? '' : `<button class="lk" data-act="ativo" data-id="${esc(em)}">${a.ativo ? 'Desativar' : 'Reativar'}</button>`}<button class="lk" data-act="reset" data-id="${esc(em)}">Link de nova senha</button></td></tr>`).join('')}</tbody></table>` : '<div class="empty">Ninguém além de você ainda.</div>'}` }
 
@@ -317,20 +337,17 @@ function vAjustes() { const n = cfg.niveis, ad = can.admin();
   <label>Unidade de venda<input name="unidade" value="${esc(cfg.unidade)}" required></label>
   <label>Preço por ${esc(U())} (R$)<input name="preco" type="number" step="0.01" min="0" value="${+cfg.preco}"></label>
   <label>Ciclo padrão de reposição (dias)<input name="ciclo" type="number" min="1" value="${+cfg.ciclo}"></label>
-  <label>Janela da bonificação (dias)<input name="janela" type="number" min="7" value="${+cfg.janela}"></label>
-  <label>Pontos por ${esc(U())}<input name="ptsCaixa" type="number" min="0" value="${+cfg.ptsCaixa}"></label>
-  <label>Bônus por repor no prazo<input name="ptsPontual" type="number" min="0" value="${+cfg.ptsPontual}"></label>
-  <label>Bônus por indicação<input name="ptsIndicacao" type="number" min="0" value="${+cfg.ptsIndicacao}"></label><span></span>
-  ${n.map((t, i) => `<label>Nível ${i + 1}<input name="n${i}" value="${esc(t.nome)}" required></label><label>A partir de (pts)<input name="m${i}" type="number" min="0" value="${+t.min}" ${i ? '' : 'readonly'}></label><label class="w">Prêmio<input name="p${i}" value="${esc(t.premio)}"></label>`).join('')}
-  <h3 class="w" style="margin:18px 0 0">Bonificação da equipe (mensal)</h3><p class="pl w" style="margin:0">Pontos de cada vendedor no mês. Ajuste depois do primeiro mês, olhando quanto a equipe faz de verdade.</p>
-  <label>Pontos por ${esc(U())} vendida e paga<input name="bva" type="number" min="0" step="0.5" value="${+cfg.bv.a}"></label>
-  <label>Por ponto novo que fez pedido<input name="bvb" type="number" min="0" value="${+cfg.bv.b}"></label>
-  <label>Por prospecção cadastrada<input name="bvc" type="number" min="0" value="${+cfg.bv.c}"></label>
-  <label>Por visita registrada<input name="bvd" type="number" min="0" step="0.5" value="${+cfg.bv.d}"></label>
-  ${cfg.bv.niveis.map((t, i) => `<label>Nível ${i + 1} da equipe<input name="vn${i}" value="${esc(t.nome)}" required></label><label>A partir de (pts no mês)<input name="vm${i}" type="number" min="0" value="${+t.min}" ${i ? '' : 'readonly'}></label><label class="w">Prêmio<input name="vp${i}" value="${esc(t.premio)}"></label>`).join('')}
+  <label>Prazo padrão de pagamento (dias)<input name="prazo" type="number" min="0" value="${+cfg.prazo || 15}"><small>Venda a prazo já sai com vencimento daqui a esses dias</small></label><span></span>
+  <h3 class="w" style="margin:18px 0 0">Clube de parceiros (clientes)</h3><p class="pl w" style="margin:0">Nível do ponto pela média de compra por mês (últimos 90 dias), meses comprando (últimos 6) e % pago em dia.</p>
+  ${cfg.clube.niveis.map((t, i) => `<label>Nível ${i + 1}<input name="cn${i}" value="${esc(t.nome)}" required></label>${i ? `<label>Média mínima/mês<input name="cm${i}" type="number" min="0" step="0.5" value="${+t.med}"></label><label>Meses comprando (de 6)<input name="cs${i}" type="number" min="0" max="6" value="${+t.meses}"></label><label>% pago em dia<input name="cp${i}" type="number" min="0" max="100" value="${+t.pont}"></label>` : '<span></span>'}<label class="w">Benefício<input name="cb${i}" value="${esc(t.ben)}"></label>`).join('')}
+  <label class="w">Indicação<input name="cind" value="${esc(cfg.clube.ind)}"></label>
+  <h3 class="w" style="margin:18px 0 0">Meta da equipe (mensal)</h3><p class="pl w" style="margin:0">Conta ${esc(U())}s vendidas e já pagas no mês (pela data do pagamento). Venda a receber entra quando for paga.</p>
+  <label>Ponto novo que recomprou vale (${esc(U())}s)<input name="mnovo" type="number" min="0" value="${+cfg.meta.novo}"></label>
+  <label>Bônus fica retido se tiver cobrança vencida há mais de (dias)<input name="mtrava" type="number" min="0" value="${+cfg.meta.travaDias}"></label>
+  ${cfg.meta.niveis.map((t, i) => `<label>Nível ${i + 1}<input name="vn${i}" value="${esc(t.nome)}" required></label><label>A partir de (${esc(U())}s no mês)<input name="vm${i}" type="number" min="0" value="${+t.min}" ${i ? '' : 'readonly'}></label><label class="w">Prêmio<input name="vp${i}" value="${esc(t.premio)}"></label>`).join('')}
   ${ad ? '<div class="fa w"><button class="btn ink">Salvar ajustes</button></div>' : ''}</fieldset></form>
   ${ad ? `<h3>Dados da empresa (saem no comprovante e na nota)</h3>
-  <form id="empF" class="f card" style="padding:20px">${[['razao', 'Razão social', 'w'], ['doc', 'CNPJ (ou CPF)'], ['ie', 'Inscrição estadual'], ['endereco', 'Endereço com número', 'w'], ['bairro', 'Bairro'], ['cidade', 'Cidade'], ['uf', 'UF'], ['cep', 'CEP'], ['tel', 'Telefone / WhatsApp'], ['email', 'E-mail'], ['pix', 'Chave PIX'], ['rodape', 'Texto do rodapé do comprovante', 'w']].map(([k, l, w]) => `<label class="${w || ''}">${l}<input name="${k}" value="${esc(emp()[k])}"></label>`).join('')}
+  <form id="empF" class="f card" style="padding:20px">${[['fantasia', 'Nome no comprovante'], ['pix', 'Chave PIX (vai no comprovante e no lembrete)'], ['razao', 'Razão social (opcional)', 'w'], ['doc', 'CNPJ'], ['ie', 'Inscrição estadual'], ['endereco', 'Endereço com número', 'w'], ['bairro', 'Bairro'], ['cidade', 'Cidade'], ['uf', 'UF'], ['cep', 'CEP'], ['tel', 'Telefone / WhatsApp'], ['email', 'E-mail'], ['insta', 'Instagram'], ['site', 'Site'], ['rodape', 'Texto do rodapé do comprovante', 'w']].map(([k, l, w]) => `<label class="${w || ''}">${l}<input name="${k}" value="${esc(emp()[k])}"></label>`).join('')}
   <label class="w" style="flex-direction:row;gap:10px;align-items:center"><input type="checkbox" name="controlaNF" ${cfg.controlaNF === false ? '' : 'checked'} style="width:22px;min-height:22px"> Controlar emissão de NF-e em cada pedido</label>
   <div class="fa w"><button class="btn ink">Salvar dados da empresa</button></div></form>
   <h3>Produtos</h3><p class="lead">${produtos().length} produtos cadastrados. <a class="lk" href="#produtos">Abrir a lista de produtos</a></p>` : ''}
@@ -340,10 +357,9 @@ function vAjustes() { const n = cfg.niveis, ad = can.admin();
 function vMais() {
   const ios = /iphone|ipad|ipod/i.test(navigator.userAgent), standalone = matchMedia('(display-mode: standalone)').matches || navigator.standalone;
   return `<h2>Mais</h2><div class="menu">
-  ${can.gest() ? `<a href="#ranking">Ranking <span>quem mais compra e vende</span></a><a href="#bonus">Bônus dos clientes <span>programa de fidelidade dos pontos</span></a><a href="#produtos">Produtos <span>${produtos().length} cadastrados</span></a>
-  <a href="#triagem">Triagem <span>${[...pdvs.values()].filter(p => p.status === 'verificar').length} a verificar</span></a>
-  ${can.admin() ? `<a href="#notas">Notas fiscais <span>${peds.filter(o => o.nf && o.nf.st !== 'emitida').length} a emitir</span></a><a href="#time">Desempenho da equipe <span>ficha e bônus de cada colaborador</span></a><a href="#equipe">Equipe <span>acessos dos vendedores</span></a>` : ''}
-  <a href="#ajustes">Ajustes e exportar <span>regras e planilhas</span></a>` : `<a href="#pontos">Meus pontos <span>${meusP().length} no seu nome ou que você atende</span></a><a href="#repor">Reposição <span>quem está perto de repor</span></a>`}
+  ${can.gest() ? `<a href="#repor">Reposição <span>quem está perto de repor</span></a><a href="#produtos">Produtos <span>${produtos().length} cadastrados</span></a><a href="#bonus">Clube de parceiros <span>fidelidade dos pontos de venda</span></a><a href="#ranking">Ranking <span>quem mais compra e mais vende</span></a><a href="#triagem">Triagem <span>${[...pdvs.values()].filter(p => p.status === 'verificar').length} a verificar</span></a>
+  ${can.admin() ? `<a href="#notas">Notas fiscais <span>${peds.filter(o => o.nf && o.nf.st !== 'emitida').length} a emitir</span></a><a href="#equipe">Acessos <span>quem entra no app e com qual papel</span></a>` : ''}
+  <a href="#ajustes">Ajustes e exportar <span>dados da empresa, PIX, regras e planilhas</span></a>` : `<a href="#pontos">Meus pontos <span>${meusP().length} no seu nome ou que você atende</span></a><a href="#cobrar">Cobranças <span>lembretes de pagamento</span></a>`}
   ${!standalone && installEvt ? '<button data-act="install">Instalar app no celular <span>Android</span></button>' : ''}
   <button data-act="logout">Sair <span>${esc(me?.email || '')}</span></button></div>
   ${!standalone && ios ? `<div class="card" style="margin-top:16px;max-width:520px"><b>Instalar no iPhone</b><ol class="steps"><li>Abra este endereço no <b>Safari</b>.</li><li>Toque em <b>Compartilhar</b> (quadrado com seta pra cima).</li><li>Escolha <b>Adicionar à Tela de Início</b> e confirme.</li></ol></div>` : ''}
@@ -361,39 +377,78 @@ function numeros(email, k) { const de = desdeDe(k), mine = o => !email || o.por 
   const conP = con.filter(p => conqD(p) >= de);
   return { q: ps.reduce((a, o) => a + (+o.q || 0), 0), n: ps.length, v: ps.reduce((a, o) => a + (+o.v || 0), 0), pts: new Set(ps.map(o => o.pdv)).size,
     con, conP, at: con.filter(p => p.status === 'ativo').length, pro: con.filter(p => p.status === 'prospeccao').length } }
-function vInicio() {
-  const eq = can.admin() && iv === 'eq', em = eq ? '' : me.email, x = numeros(em, ip), pn = (me.nome || '').split(' ')[0];
-  const PER = { mes: 'Este mês', d90: '90 dias', tudo: 'Desde o início' };
-  const h0 = new Date().getHours(), oi = h0 < 12 ? 'Bom dia' : h0 < 18 ? 'Boa tarde' : 'Boa noite';
-  const lst = (eq ? [...pdvs.values()].filter(p => p.status !== 'fechou') : meusP()).sort((a, b) => a.nome.localeCompare(b.nome)), vis = ilf === 'todos' ? lst : lst.filter(p => p.status === ilf);
-  const rep = lst.filter(p => p.status === 'ativo' && M.get(p.id).prox && M.get(p.id).dAte <= 3).sort((a, b) => M.get(a.id).dAte - M.get(b.id).dAte);
-  // ranking da equipe no período
-  const de = desdeDe(ip), rk = new Map(), add = (e, k, n) => { if (!e) return; const r = rk.get(e) || { q: 0, c: 0 }; r[k] += n; rk.set(e, r) };
-  peds.filter(o => o.d >= de && o.por).forEach(o => add(o.por, 'q', +o.q || 0));
-  [...pdvs.values()].forEach(p => { const c = conquistador(p); if (c && p.status !== 'fechou' && conqD(p) >= de) add(c, 'c', 1) });
-  const rl = [...rk].sort((a, b) => b[1].q - a[1].q || b[1].c - a[1].c), mx = Math.max(1, ...rl.map(r => r[1].q)), pos = rl.findIndex(r => r[0] === me.email);
-  let h = `<section class="capa"><div class="capa-t"><span class="pl">${oi}${eq ? '' : ','}</span><h2>${eq ? 'Números da equipe' : esc(pn || 'vendedor')}</h2>
-   <p class="pl">${eq ? 'Tudo que a equipe vendeu e conquistou.' : can.gest() && pos >= 0 && rl.length > 1 ? `Você está em <b>${pos + 1}º</b> no ranking da equipe (${PER[ip].toLowerCase()}).` : 'Seus números na rua, atualizados a cada registro.'}</p></div>
+/* ---------- cobranças: prazo, lembrete no WhatsApp com PIX e CNPJ ---------- */
+const receber = () => peds.filter(o => o.pg === 'receber' && (can.gest() || o.por === me.email));
+const diasPara = o => o.venc ? D(o.venc) - D(today()) : null;
+function lembreteTexto(o) { const p = pdvs.get(o.pdv), e = emp(), d = diasPara(o), its = itensDe(o);
+  const quando = d === null ? 'está em aberto' : d > 1 ? `vence em ${brD(o.venc)}` : d === 1 ? `vence amanhã (${brD(o.venc)})` : d === 0 ? `vence hoje (${brD(o.venc)})` : `venceu em ${brD(o.venc)}`;
+  const pr = (p?.contato && p?.resp) ? p.resp : (p?.nome || '');
+  const blocos = [`Oi${pr ? ', ' + pr : ''}! Aqui é da *${e.fantasia}*.`,
+    `Passando pra lembrar que o pagamento do pedido *${o.n || o.id}*, deixado aí em ${brD(o.d)}, ${quando}.` + (its.length ? '\n' + its.map(i => `• ${nf(i.q)} ${i.un || ''} ${i.d}`).join('\n') : '') + `\n*Valor: ${brl(o.v)}*`,
+    e.pix ? `*Pague por PIX*\nChave: ${e.pix}\nFavorecido: ${e.fantasia}${e.razao ? ' (' + e.razao + ')' : ''}\nCNPJ: ${e.doc}` : `Favorecido: ${e.fantasia} · CNPJ: ${e.doc}`,
+    `Assim que pagar, manda o comprovante por aqui. Obrigado pela parceria!\n${e.fantasia} · ${e.tel}`];
+  return blocos.join('\n\n') }
+function waLink(p, msg) { const d = String(p?.contato || '').replace(/\D/g, ''); if (d.length < 10) return ''; return `https://wa.me/${d.length <= 11 ? '55' + d : d}?text=${encodeURIComponent(msg)}` }
+function cobItem(o, comVend) { const p = pdvs.get(o.pdv), d = diasPara(o), late = d !== null && d < 0, w = waLink(p, '');
+  const tag = d === null ? '' : d < 0 ? `<span class="pill p-verificar">${-d === 1 ? 'venceu ontem' : `venceu há ${-d} dias`}</span>` : d === 0 ? '<span class="pill pend">vence hoje</span>' : d === 1 ? '<span class="pill p-prospeccao">vence amanhã</span>' : `<span class="pill">vence ${fd(o.venc)}</span>`;
+  return `<div class="cob ${late ? 'late' : ''}"><div class="cob-t"><div><button class="nm" data-act="open" data-id="${esc(o.pdv)}">${esc(p?.nome || 'Ponto removido')}</button><div class="pl">Pedido ${esc(o.n || '')} · deixado em ${brD(o.d)}${comVend ? ' · ' + esc(o.pn || nomeDe(o.por)) : ''}</div></div><div class="due"><span class="num">${brl(o.v)}</span>${tag}</div></div>
+   <div class="cb">${w ? `<button class="btn sm sun" data-act="lemb" data-p="${esc(o.pdv)}" data-id="${esc(o.id)}">Lembrete no WhatsApp</button>` : `<span class="pl">Sem WhatsApp no cadastro do ponto</span>`}<button class="btn sm line" data-w data-act="pago" data-p="${esc(o.pdv)}" data-id="${esc(o.id)}">Recebi</button><button class="btn sm line" data-act="rec" data-p="${esc(o.pdv)}" data-id="${esc(o.id)}">Comprovante</button></div>
+   ${o.lemb ? `<div class="pl">Lembrete enviado em ${fd(o.lemb)}</div>` : ''}</div>` }
+function vCobrar() { const l = receber().sort((a, b) => (a.venc || '9') < (b.venc || '9') ? -1 : 1), e = emp(), g = can.gest();
+  const G = [['Atrasados', l.filter(o => diasPara(o) !== null && diasPara(o) < 0)], ['Vence hoje', l.filter(o => diasPara(o) === 0)], ['Vence amanhã', l.filter(o => diasPara(o) === 1)], ['Próximos 7 dias', l.filter(o => diasPara(o) > 1 && diasPara(o) <= 7)], ['Depois', l.filter(o => diasPara(o) === null || diasPara(o) > 7)]];
+  const tot = l.reduce((a, o) => a + (+o.v || 0), 0), atr = G[0][1].reduce((a, o) => a + (+o.v || 0), 0);
+  return `<h2>Cobranças</h2><p class="lead">Mercadoria deixada a prazo. Na véspera e no dia do vencimento, toque em <b>Lembrete no WhatsApp</b>: a mensagem já sai pronta com valor, PIX e CNPJ. Quando o ponto pagar, toque em <b>Recebi</b>.</p>
+  ${!e.pix ? `<div class="flag" style="margin-bottom:14px">Falta a chave PIX da empresa. ${can.admin() ? '<a class="lk" href="#ajustes">Cadastrar em Ajustes</a>' : 'Peça para a administradora cadastrar.'} Sem ela, o lembrete sai só com o CNPJ.</div>` : ''}
+  <div class="mets m3"><div class="met"><span class="num">${brl(tot)}</span><small>a receber${g ? '' : ' dos seus pedidos'}</small></div><div class="met"><span class="num" style="color:${atr ? 'var(--brick)' : 'inherit'}">${brl(atr)}</span><small>atrasado</small></div><div class="met"><span class="num">${G[1][1].length + G[2][1].length}</span><small>lembretes pra mandar hoje</small></div></div>
+  ${l.length ? G.filter(([, x]) => x.length).map(([t, x]) => `<h3>${t} <span>${x.length} · ${brl(x.reduce((a, o) => a + (+o.v || 0), 0))}</span></h3><div class="grid">${x.map(o => cobItem(o, g)).join('')}</div>`).join('') : '<div class="empty">Nada a receber. Tudo em dia.</div>'}` }
+
+/* ---------- início: uma tela para cada papel ---------- */
+function vInicio() { if (!can.gest()) return vVendedor(); if (can.dono()) return `<div class="chips switch"><button class="chip ${iv !== 'eu' ? 'on' : ''}" data-act="iv" data-v="emp">Empresa</button><button class="chip ${iv === 'eu' ? 'on' : ''}" data-act="iv" data-v="eu">Minhas vendas</button></div>` + (iv === 'eu' ? vVendedor() : vPainel()); return vPainel() }
+function ultimas(email, n) { return peds.filter(o => !email || o.por === email).sort((a, b) => byD(b, a)).slice(0, n) }
+function vVendedor() { const pn = (me.nome || '').split(' ')[0], h0 = new Date().getHours(), oi = h0 < 12 ? 'Bom dia' : h0 < 18 ? 'Boa tarde' : 'Boa noite';
+  const c = colab(me.email, 'mes'), bv = bonusV(me.email, ymDe('mes')), k = estoqueDe(me.email), meus = meusP().sort((a, b) => a.nome.localeCompare(b.nome)), vis = ilf === 'todos' ? meus : meus.filter(p => p.status === ilf);
+  const cob = peds.filter(o => o.por === me.email && o.pg === 'receber' && diasPara(o) !== null && diasPara(o) <= 1).sort((a, b) => a.venc < b.venc ? -1 : 1);
+  const rep = meus.filter(p => p.status === 'ativo' && M.get(p.id).prox && M.get(p.id).dAte <= 3).sort((a, b) => M.get(a.id).dAte - M.get(b.id).dAte);
+  return `<section class="capa"><div class="capa-t"><span class="pl">${oi},</span><h2>${esc(pn || 'vendedor')}</h2></div>
    <div class="cta"><button class="btn mega" data-w data-act="newPdv"><span class="plus">+</span><span>Cadastrar novo PDV<small>ponto conquistado ou em prospecção</small></span></button>
-   <button class="btn mega2" data-w data-act="newPed">Registrar pedido ou visita</button>${can.admin() ? '<a class="btn mega2" href="#time">Desempenho da equipe</a>' : ''}</div></section>
-  <div class="chips">${can.admin() ? `<button class="chip ${!eq ? 'on' : ''}" data-act="iv" data-v="eu">Meus números</button><button class="chip ${eq ? 'on' : ''}" data-act="iv" data-v="eq">Equipe toda</button><span class="sep"></span>` : ''}${Object.entries(PER).map(([k, t]) => `<button class="chip ${ip === k ? 'on' : ''}" data-act="ip" data-v="${k}">${t}</button>`).join('')}</div>
-  <div class="mets">
-   <div class="met big"><span class="num">${nf(x.q)}</span><small>${esc(Us(x.q))} de seda vendidas</small><em>${x.n} ${x.n === 1 ? 'pedido' : 'pedidos'} em ${x.pts} ${x.pts === 1 ? 'ponto' : 'pontos'}</em></div>
-   <div class="met big alt"><span class="num">${x.con.length}</span><small>estabelecimentos conquistados${eq ? '' : ' no seu nome'}</small><em>${x.conP.length ? `+${x.conP.length} ${ip === 'tudo' ? 'no total' : PER[ip].toLowerCase()}` : `nenhum novo ${ip === 'mes' ? 'este mês' : 'no período'}`}</em></div>
-   <div class="met"><span class="num">${x.at}</span><small>conquistados ativos</small></div>
-   <div class="met"><span class="num">${x.pro}</span><small>em prospecção</small></div>
-   <div class="met"><span class="num">${x.v ? brl(x.v) : 'R$ 0'}</span><small>vendido${ip === 'tudo' ? '' : ' no período'}</small></div>
-  </div>
-  ${eq ? '' : (() => { const bv = bonusV(me.email, ymDe('mes')), c = colab(me.email, 'mes');
-    return `<div class="bvcard"><div><span class="pl">Sua bonificação de ${esc(nomeMes(ymDe('mes')))}</span><div class="bvl">${tierV(bv.nv)}<b>${bv.pts} pts</b></div><div class="pl">${progV(bv)}</div></div><div class="bvp"><small>prêmio do nível</small><b>${esc(cfg.bv.niveis[bv.nv].premio)}</b>${bv.nx ? `<small>próximo: ${esc(bv.nx.premio)}</small>` : ''}</div>${c.rec ? `<div class="bvr ${c.venc ? 'venc' : ''}"><small>a receber dos seus pedidos</small><b>${brl(c.rec)}</b>${c.venc ? `<small>${brl(c.venc)} vencido</small>` : ''}</div>` : ''}</div>${(() => { const k = estoqueDe(me.email); return k.n ? `<div class="bvcard carga"><div><span class="pl">Mercadoria com você</span><div class="bvl"><b>${nf(k.com)}</b><span>${esc(Us(k.com))} na mão</span></div><div class="pl">Pegou ${nf(k.ent)} · vendeu ${nf(k.vend)} · devolveu ${nf(k.dev)}</div></div><div class="bvr ${k.aPagar > 0 ? 'venc' : ''}"><small>falta acertar com a empresa</small><b>${brl(Math.max(0, k.aPagar))}</b>${k.ultP ? `<small>último acerto ${fd(k.ultP)}</small>` : ''}</div></div>` : '' })()}` })()}
-  <div class="cols" style="margin-top:8px">
-   ${can.gest() ? `<div class="rk"><h3>Ranking da equipe <span>${PER[ip]}</span></h3>${rl.length ? rl.slice(0, 8).map(([e, r], i) => `<div class="rr ${e === me.email ? 'me' : ''}" style="cursor:default"><i>${i + 1}</i><span class="n">${esc(nomeDe(e))}${e === me.email ? ' (você)' : ''}</span><span class="v">${nf(r.q)} ${esc(Us(r.q))} · ${r.c} novos</span><div class="tr"><div style="width:${r.q / mx * 100}%"></div></div></div>`).join('') : '<p class="pl">Ninguém registrou pedido nesse período ainda.</p>'}</div>` : ''}
-   <div class="rk"><h3>${eq ? 'Pontos da empresa' : 'Seus pontos'} <span>${lst.length}</span></h3>
-    <div class="chips" style="margin-bottom:8px">${[['ativo', 'Ativos'], ['prospeccao', 'Prospecção'], ['todos', 'Todos']].map(([k, t]) => `<button class="chip sm ${ilf === k ? 'on' : ''}" data-act="ilf" data-v="${k}">${t} ${k === 'todos' ? lst.length : lst.filter(p => p.status === k).length}</button>`).join('')}</div>
-    ${vis.length ? `<div class="scrollbox">${vis.map(p => { const s = M.get(p.id); return `<div class="rr" data-act="open" data-id="${esc(p.id)}"><i>•</i><span class="n">${esc(p.nome)}</span><span class="v">${pill(p.status)}</span><span class="pl" style="grid-column:2/4">${esc(lugar(p))}${s?.last ? ' · último pedido ' + fd(s.last.d) : ''}${eq && conquistador(p) ? ' · ' + esc(nomeDe(conquistador(p))) : ''}</span></div>` }).join('')}</div>` : `<div class="empty" style="padding:16px">${lst.length ? 'Nenhum ponto nesse filtro.' : eq ? 'Nenhum ponto cadastrado.' : 'Nenhum ponto no seu nome ainda. Cada ponto que você cadastrar ou atender entra aqui.'}</div>`}
-   ${rep.length ? `<h3>Pra repor até 3 dias <span>${rep.length}</span></h3>${rep.slice(0, 5).map(p => `<div class="rr" data-act="open" data-id="${esc(p.id)}"><i>!</i><span class="n">${esc(p.nome)}</span><span class="v">${M.get(p.id).dAte < 0 ? 'atrasado ' : ''}${rel(M.get(p.id).dAte)}</span></div>`).join('')}<a class="lk" href="#repor">Abrir reposição</a>` : ''}</div>
-  </div>`;
-  return h }
+   <button class="btn mega2" data-w data-act="newPed">Registrar venda ou visita</button></div></section>
+  <div class="mets m3"><div class="met"><span class="num">${nf(c.q)}</span><small>${esc(Us(c.q))} vendidas em ${esc(nomeMes(ymDe('mes')))}</small></div><div class="met"><span class="num">${meus.filter(p => p.status === 'ativo').length}</span><small>pontos ativos seus</small></div><div class="met"><span class="num" style="color:${c.venc ? 'var(--brick)' : 'inherit'}">${brl(c.rec)}</span><small>a receber${c.venc ? ` · ${brl(c.venc)} atrasado` : ''}</small></div></div>
+  ${cob.length ? `<h3>Cobrar hoje <span>${cob.length}</span></h3><div class="grid">${cob.map(o => cobItem(o, false)).join('')}</div>` : ''}
+  <div class="bvcard"><div><span class="pl">Sua meta de ${esc(nomeMes(ymDe('mes')))}</span><div class="bvl">${tierV(bv.nv)}<b>${nf(bv.pts)}</b><span>${esc(Us(bv.pts))} vendidas e pagas</span></div><div class="pl">${progV(bv)}</div>${bv.trava ? `<div class="pl" style="color:var(--brick)">Bônus retido até receber as cobranças atrasadas.</div>` : ''}</div><div class="bvp"><small>bônus do nível</small><b>${esc(cfg.meta.niveis[bv.nv].premio)}</b>${bv.nx ? `<small>próximo: ${esc(bv.nx.premio)}</small>` : ''}</div></div>
+  ${k.n ? `<div class="bvcard carga"><div><span class="pl">Mercadoria com você</span><div class="bvl"><b>${nf(k.com)}</b><span>${esc(Us(k.com))} na mão</span></div><div class="pl">Pegou ${nf(k.ent)} · vendeu ${nf(k.vend)} · devolveu ${nf(k.dev)}</div></div><div class="bvr ${k.aPagar > 0 ? 'venc' : ''}"><small>falta acertar com a empresa</small><b>${brl(Math.max(0, k.aPagar))}</b></div></div>` : ''}
+  <div class="cols" style="margin-top:12px">
+   <div class="rk"><h3>Seus pontos <span>${meus.length}</span></h3>
+    <div class="chips" style="margin-bottom:8px">${[['ativo', 'Ativos'], ['prospeccao', 'Prospecção'], ['todos', 'Todos']].map(([kk, t]) => `<button class="chip sm ${ilf === kk ? 'on' : ''}" data-act="ilf" data-v="${kk}">${t} ${kk === 'todos' ? meus.length : meus.filter(p => p.status === kk).length}</button>`).join('')}</div>
+    ${vis.length ? `<div class="scrollbox">${vis.map(p => { const s = M.get(p.id); return `<div class="rr" data-act="open" data-id="${esc(p.id)}"><i>•</i><span class="n">${esc(p.nome)}</span><span class="v">${pill(p.status)}</span><span class="pl" style="grid-column:2/4">${esc(lugar(p))}${s?.last ? ' · último pedido ' + fd(s.last.d) : ''}</span></div>` }).join('')}</div>` : `<div class="empty" style="padding:16px">${meus.length ? 'Nenhum ponto nesse filtro.' : 'Nenhum ponto no seu nome ainda. Cada ponto que você cadastrar ou atender entra aqui.'}</div>`}</div>
+   <div class="rk">${rep.length ? `<h3>Repor até 3 dias <span>${rep.length}</span></h3>${rep.slice(0, 6).map(p => `<div class="rr" data-act="open" data-id="${esc(p.id)}"><i>!</i><span class="n">${esc(p.nome)}</span><span class="v">${M.get(p.id).dAte < 0 ? 'atrasado ' : ''}${rel(M.get(p.id).dAte)}</span></div>`).join('')}<a class="lk" href="#repor">Ver reposição</a>` : '<h3>Reposição</h3><p class="pl">Nenhum ponto seu pra repor nos próximos 3 dias.</p>'}
+    <h3>Suas últimas vendas</h3>${feed(ultimas(me.email, 6), false)}</div>
+  </div>` }
+function feed(l, comVend) { return l.length ? `<div class="scrollbox">${l.map(o => { const p = pdvs.get(o.pdv);
+  return `<div class="fd"><div><b>${esc(p?.nome || 'Ponto removido')}</b><div class="pl">${fd(o.d)}${comVend ? ' · ' + esc(o.pn || nomeDe(o.por)) : ''} · ${nf(o.q)} ${esc(Us(+o.q))} · ${brl(o.v)} · ${o.pg === 'receber' ? `a prazo${o.venc ? ' até ' + fd(o.venc) : ''}` : 'pago'}</div></div><button class="lk" data-act="rec" data-p="${esc(o.pdv)}" data-id="${esc(o.id)}">Comprovante</button></div>` }).join('')}</div>` : '<p class="pl">Nenhuma venda registrada ainda.</p>' }
+function vPainel() { const t = today(), T = D(t), PER = { hoje: 'Hoje', sem: '7 dias', mes: 'Este mês' }, k0 = ['hoje', 'sem', 'mes'].includes(ip) ? ip : 'mes';
+  const de = k0 === 'hoje' ? t : k0 === 'sem' ? addD(t, -6) : t.slice(0, 8) + '01', ps = peds.filter(o => o.d >= de);
+  const rec = peds.filter(o => o.pg === 'receber'), atr = rec.filter(o => diasPara(o) !== null && diasPara(o) < 0), hoje = rec.filter(o => diasPara(o) === 0 || diasPara(o) === 1);
+  const recebido = peds.filter(o => o.pg !== 'receber' && (o.pgEm || o.d) >= de).reduce((a, o) => a + (+o.v || 0), 0);
+  const repAtr = [...pdvs.values()].filter(p => p.status === 'ativo' && M.get(p.id).prox && M.get(p.id).dAte < 0).length;
+  const rua = colabs().map(e => estoqueDe(e)).filter(x => x.n), ruaV = rua.reduce((a, x) => a + Math.max(0, x.aPagar), 0), ruaQ = rua.reduce((a, x) => a + x.com, 0);
+  const nfp = peds.filter(o => o.nf && o.nf.st !== 'emitida').length, ver = [...pdvs.values()].filter(p => p.status === 'verificar').length;
+  const novos = [...pdvs.values()].filter(p => p.status !== 'fechou' && conqD(p) >= de).length;
+  const A = [atr.length && ['cobrar', 'late', brl(atr.reduce((a, o) => a + (+o.v || 0), 0)), `${atr.length} ${atr.length === 1 ? 'cobrança atrasada' : 'cobranças atrasadas'}`],
+    hoje.length && ['cobrar', 'hot', hoje.length, `${hoje.length === 1 ? 'pagamento vence' : 'pagamentos vencem'} hoje ou amanhã`],
+    repAtr && ['repor', '', repAtr, `${repAtr === 1 ? 'ponto' : 'pontos'} com reposição atrasada`],
+    ruaV > 0 && ['time', '', brl(ruaV), `de mercadoria na rua a acertar (${nf(ruaQ)} ${esc(Us(ruaQ))})`],
+    can.admin() && nfp && ['notas', '', nfp, `${nfp === 1 ? 'nota fiscal' : 'notas fiscais'} a emitir`],
+    ver && ['triagem', '', ver, `${ver === 1 ? 'ponto' : 'pontos'} a verificar`]].filter(Boolean);
+  const eq = colabs().map(e => ({ e, c: colab(e, k0 === 'mes' ? 'mes' : 'tudo'), q: ps.filter(o => o.por === e).reduce((a, o) => a + (+o.q || 0), 0), v: ps.filter(o => o.por === e).reduce((a, o) => a + (+o.v || 0), 0), k: estoqueDe(e) })).filter(x => x.q || x.c.rec || x.k.n || acessos.get(x.e)?.ativo).sort((a, b) => b.q - a.q || b.v - a.v);
+  const mx = Math.max(1, ...eq.map(x => x.q));
+  return `<div class="ptop"><div><h2>Painel de controle</h2><p class="pl">${new Date().toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' })}</p></div><div class="cb"><button class="btn sm ink" data-w data-act="newPed">+ Venda ou visita</button><button class="btn sm line" data-w data-act="newPdv">+ Ponto de venda</button></div></div>
+  <h3>Precisa de atenção</h3>${A.length ? `<div class="alerts">${A.map(([go, c, n, l]) => `<a class="al ${c}" href="#${go}"><span class="num">${n}</span><small>${l}</small></a>`).join('')}</div>` : '<div class="empty ok">Tudo em dia. Nenhuma cobrança atrasada, nenhuma reposição atrasada.</div>'}
+  <div class="ptop" style="margin-top:22px"><h3 style="margin:0">Movimento</h3><div class="chips" style="margin:0">${Object.entries(PER).map(([kk, l]) => `<button class="chip sm ${k0 === kk ? 'on' : ''}" data-act="ip" data-v="${kk}">${l}</button>`).join('')}</div></div>
+  <div class="mets m4"><div class="met"><span class="num">${brl(ps.reduce((a, o) => a + (+o.v || 0), 0))}</span><small>vendido · ${ps.length} ${ps.length === 1 ? 'pedido' : 'pedidos'}</small></div><div class="met"><span class="num">${nf(ps.reduce((a, o) => a + (+o.q || 0), 0))}</span><small>${esc(U())}s vendidas</small></div><div class="met"><span class="num">${brl(recebido)}</span><small>recebido</small></div><div class="met"><span class="num">${novos}</span><small>pontos novos</small></div></div>
+  <div class="cols" style="margin-top:14px">
+   <div class="rk"><h3>Equipe <span>${PER[k0].toLowerCase()}</span></h3>${eq.length ? `<div class="scrollbox">${eq.map(x => `<div class="rr" data-act="colab" data-id="${esc(x.e)}"><i>${esc((nomeDe(x.e)[0] || '?').toUpperCase())}</i><span class="n">${esc(nomeDe(x.e))}</span><span class="v">${nf(x.q)} ${esc(Us(x.q))}</span><div class="tr"><div style="width:${(x.q / mx * 100).toFixed(0)}%"></div></div><span class="pl" style="grid-column:2/4">${x.c.rec ? `a receber ${brl(x.c.rec)}${x.c.venc ? ` (${brl(x.c.venc)} atrasado)` : ''}` : 'nada a receber'}${x.k.n ? ` · com ele ${nf(x.k.com)} ${esc(Us(x.k.com))}` : ''}</span></div>`).join('')}</div>` : '<p class="pl">Ninguém da equipe registrou nada ainda.</p>'}</div>
+   <div class="rk"><h3>Últimas vendas</h3>${feed(ultimas('', 30), true)}</div>
+  </div>` }
 
 /* ---------- mercadoria com cada colaborador (consignação) ---------- */
 function estoqueDe(email) { const mv = cargas.filter(m => m.em === email), f = m => (+m.q || 0) * (prodDe(m.prod)?.f ?? 1), val = m => (+m.q || 0) * (+m.pu || 0);
@@ -433,7 +488,7 @@ function vProdutos() { const ps = produtos(), ad = can.admin(), cats = [...new S
   return `<h2>Produtos</h2><p class="lead">Tudo que a empresa vende. É essa lista que aparece para escolher no pedido. "Conta como" diz quantas ${esc(U())}s cada unidade vale no giro, nas metas e no bônus (0 para acessórios). NCM e tributação: confirmar com a contabilidade.</p>
   ${ad ? `<div class="cb" style="margin-bottom:16px"><button class="btn ink" data-act="prodNovo">+ Produto</button>${falta ? `<button class="btn line" data-act="prodCat">Carregar os ${falta} produtos do catálogo de novembro</button>` : ''}</div>` : ''}
   ${cats.map(c => `<h3>${esc(c)} <span>${ps.filter(p => (p.cat || 'Produtos') === c).length}</span></h3><table class="stack ptab"><colgroup><col><col style="width:14%"><col style="width:18%"><col style="width:12%"><col style="width:16%"></colgroup><thead><tr><th>Produto</th><th class="r">Lojista</th><th class="r">Sugestão de venda</th><th class="r">Conta como</th><th>Situação</th></tr></thead><tbody>
-   ${ps.map((p, k) => [p, k]).filter(([p]) => (p.cat || 'Produtos') === c).map(([p, k]) => `<tr ${ad ? `data-act="prodEd" data-id="${k}" tabindex="0"` : ''}><td><b>${esc(p.d)}</b><div class="pl">${esc(p.c)} · ${esc(p.un)}${p.ncm ? ' · NCM ' + esc(p.ncm) : ''}</div></td><td class="r">${brl(p.p)}</td><td class="r">${+p.sug ? brl(p.sug) : ''}</td><td class="r">${nf(p.f ?? 1)}</td><td>${p.ativo === false ? '<span class="pill p-inativo">fora de linha</span>' : '<span class="pill p-ativo">à venda</span>'}</td></tr>`).join('')}</tbody></table>`).join('')}` }
+   ${ps.map((p, k) => [p, k]).filter(([p]) => (p.cat || 'Produtos') === c).map(([p, k]) => `<tr ${ad ? `data-act="prodEd" data-id="${k}" tabindex="0"` : ''}><td><div class="pr"><span class="ph"><img src="${esc(p.foto || 'fotos/' + p.c + '.jpg')}" alt="" loading="lazy" onerror="this.remove()"><i>foto</i></span><div><b>${esc(p.d)}</b><div class="pl">${esc(p.c)} · ${esc(p.un)}${p.ncm ? ' · NCM ' + esc(p.ncm) : ''}</div></div></div></td><td class="r">${brl(p.p)}</td><td class="r">${+p.sug ? brl(p.sug) : ''}</td><td class="r">${nf(p.f ?? 1)}</td><td>${p.ativo === false ? '<span class="pill p-inativo">fora de linha</span>' : '<span class="pill p-ativo">à venda</span>'}</td></tr>`).join('')}</tbody></table>`).join('')}` }
 function prodForm(k) { const novo = k === '' || k == null, p = novo ? { c: '', d: '', cat: 'Sedas', un: 'UN', p: 0, sug: 0, ncm: '', f: 0 } : produtos()[+k];
   const cats = [...new Set([...produtos().map(x => x.cat).filter(Boolean), 'Sedas', 'Piteiras', 'Acessórios', 'Isqueiros', 'Kits'])];
   show(novo ? 'Novo produto' : 'Editar produto', `<form class="f" id="prodF2" data-k="${novo ? '' : k}">
@@ -445,6 +500,7 @@ function prodForm(k) { const novo = k === '' || k == null, p = novo ? { c: '', d
   <label>Sugestão de venda (R$)<input name="sug" type="number" step="0.01" min="0" inputmode="decimal" value="${+p.sug || ''}"></label>
   <label>Conta como ${esc(U())}s<input name="f" type="number" step="0.01" min="0" inputmode="decimal" value="${p.f ?? 1}"><small>1 para display/caixa de seda, 0 para acessório</small></label>
   <label>NCM<input name="ncm" value="${esc(p.ncm)}"></label>
+  <label class="w">Foto<input name="foto" value="${esc(p.foto || '')}" placeholder="vazio: usa fotos/${esc(p.c || 'CODIGO')}.jpg quando a foto for enviada"><small>Mande as fotos com o nome do código (ex.: ${esc(p.c || 'SDF-DSP-BAL')}.jpg) que elas entram no app</small></label>
   <label class="w" style="flex-direction:row;gap:10px;align-items:center"><input type="checkbox" name="ativo" ${p.ativo === false ? '' : 'checked'} style="width:22px;min-height:22px"> À venda (aparece no pedido)</label>
   <div class="fa w">${novo ? '' : `<button type="button" class="btn del" data-act="prodDel" data-id="${k}">Remover</button>`}<button type="button" class="btn line" data-act="close">Cancelar</button><button class="btn ink">Salvar</button></div></form>`) }
 
@@ -452,17 +508,19 @@ function prodForm(k) { const novo = k === '' || k == null, p = novo ? { c: '', d
 const MESES = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'];
 const ymDe = k => { const t = today(); if (k === 'ant') { const [y, m] = t.split('-').map(Number); return m === 1 ? `${y - 1}-12` : `${y}-${String(m - 1).padStart(2, '0')}` } return t.slice(0, 7) };
 const nomeMes = ym => MESES[+ym.slice(5, 7) - 1] + (ym.slice(0, 4) === today().slice(0, 4) ? '' : ' de ' + ym.slice(0, 4));
-function nivelV(pts) { let n = 0; cfg.bv.niveis.forEach((t, i) => { if (pts >= +t.min) n = i }); return n }
-function bonusV(email, ym) { const b = cfg.bv, no = d => (d || '').startsWith(ym);
-  const pg = peds.filter(o => o.por === email && no(o.d)), cx = pg.filter(o => o.pg !== 'receber').reduce((a, o) => a + (+o.q || 0), 0), pend = pg.filter(o => o.pg === 'receber').reduce((a, o) => a + (+o.q || 0), 0);
-  const vis = evs.filter(e => e.t === 'v' && e.por === email && no(e.d)).length;
-  const meus = [...pdvs.values()].filter(p => p.status !== 'fechou' && conquistador(p) === email && no(conqD(p)));
-  const novos = meus.filter(p => M.get(p.id)?.n).length, prosp = meus.length - novos;
-  const pts = Math.round(cx * (+b.a || 0) + novos * (+b.b || 0) + prosp * (+b.c || 0) + vis * (+b.d || 0)), nv = nivelV(pts), nx = b.niveis[nv + 1];
+function nivelV(pts) { let n = 0; cfg.meta.niveis.forEach((t, i) => { if (pts >= +t.min) n = i }); return n }
+/* meta mensal da equipe: caixas vendidas E recebidas no mês (pela data do pagamento) + ponto novo que recomprou */
+function bonusV(email, ym) { const m = cfg.meta, no = d => (d || '').startsWith(ym), t = today();
+  const meus = peds.filter(o => o.por === email);
+  const cx = meus.filter(o => o.pg !== 'receber' && no(o.pgEm || o.d)).reduce((a, o) => a + (+o.q || 0), 0);
+  const pend = meus.filter(o => o.pg === 'receber' && no(o.d)).reduce((a, o) => a + (+o.q || 0), 0);
+  const novos = [...pdvs.values()].filter(p => conquistador(p) === email && (M.get(p.id)?.ps || []).length >= 2 && no(M.get(p.id).ps[1].d)).length;
+  const trava = meus.filter(o => o.pg === 'receber' && o.venc && D(t) - D(o.venc) > (+m.travaDias || 15));
+  const pts = Math.round(cx + novos * (+m.novo || 0)), nv = nivelV(pts), nx = m.niveis[nv + 1];
   const pago = (cfg.pagBV || {})[ym + '|' + email] || null;
-  return { cx, pend, vis, novos, prosp, pts, nv, nx, falta: nx ? +nx.min - pts : 0, pago, ym } }
-const tierV = i => `<span class="tier ${i === 3 ? 't3' : ''}">${esc(cfg.bv.niveis[i]?.nome)}</span>`;
-const progV = r => { const b = r.nv ? +cfg.bv.niveis[r.nv].min : 0; return r.nx ? `<span class="prog"><div style="width:${Math.min(100, (r.pts - b) / (+r.nx.min - b) * 100).toFixed(0)}%"></div></span>faltam ${r.falta} pts pra ${esc(r.nx.nome)}` : 'Nível máximo do mês' };
+  return { cx, pend, novos, pts, nv, nx, falta: nx ? +nx.min - pts : 0, pago, ym, trava: trava.length, travaV: trava.reduce((a, o) => a + (+o.v || 0), 0) } }
+const tierV = i => `<span class="tier ${i === 3 ? 't3' : ''}">${esc(cfg.meta.niveis[i]?.nome)}</span>`;
+const progV = r => { const b = r.nv ? +cfg.meta.niveis[r.nv].min : 0; return r.nx ? `<span class="prog"><div style="width:${Math.min(100, Math.max(0, (r.pts - b) / (+r.nx.min - b) * 100)).toFixed(0)}%"></div></span>faltam ${nf(r.falta)} ${esc(Us(r.falta))} pra ${esc(r.nx.nome)}` : 'Nível máximo do mês' };
 function colabs() { const s = new Set([me.email]); for (const [e, a] of acessos) if (a.papel !== 'leitura') s.add(e);
   peds.forEach(o => o.por && s.add(o.por)); evs.forEach(o => o.por && s.add(o.por)); for (const p of pdvs.values()) { const c = conquistador(p); if (c) s.add(c) } return [...s] }
 function colab(email, k) { const de = k === 'mes' ? today().slice(0, 8) + '01' : k === 'ant' ? ymDe('ant') + '-01' : '0000-00-00', ate = k === 'ant' ? ymDe('ant') + '-31' : '9999';
@@ -489,10 +547,10 @@ function vTime() {
    <div class="meta"><span><b>${c.n}</b> pedidos</span><span><b>${c.vis}</b> visitas</span><span><b>${c.pts.length}</b> pontos dele${c.novos.length ? ` (+${c.novos.length})` : ''}</span><span><b>${brl(c.v)}</b></span></div>
    ${c.rec ? `<div class="meta"><span style="color:${c.venc ? 'var(--brick)' : 'inherit'}">A receber <b style="color:inherit">${brl(c.rec)}</b>${c.venc ? ` · ${brl(c.venc)} vencido` : ''}</span></div>` : ''}
    ${(() => { const k = estoqueDe(c.email); return k.n ? `<div class="meta"><span>Com ele <b>${nf(k.com)}</b> ${esc(Us(k.com))}</span><span style="color:${k.aPagar > 0 ? 'var(--brick)' : 'inherit'}">falta pagar <b style="color:inherit">${brl(Math.max(0, k.aPagar))}</b></span></div>` : '' })()}
-   <div class="meta">${tierV(c.b.nv)}<span><b>${c.b.pts} pts</b> em ${esc(nomeMes(ym))}</span>${c.b.pago ? '<span class="pill p-ativo">bônus pago</span>' : ''}</div></button>`).join('')}</div>
+   <div class="meta">${tierV(c.b.nv)}<span><b>${nf(c.b.pts)}</b> de meta em ${esc(nomeMes(ym))}</span>${c.b.trava ? '<span class="pill p-verificar">bônus retido</span>' : ''}${c.b.pago ? '<span class="pill p-ativo">bônus pago</span>' : ''}</div></button>`).join('')}</div>
   <h3>Como a bonificação da equipe funciona <span>mensal · editável em Ajustes</span></h3>
-  <div class="tiers">${cfg.bv.niveis.map((t, i) => `<div class="tc ${i === 3 ? 'top3' : ''}"><span class="num">${esc(t.nome)}</span><span class="q">a partir de ${+t.min} pts</span><span>${esc(t.premio)}</span></div>`).join('')}</div>
-  <p class="pl">${+cfg.bv.a} pt por ${esc(U())} vendida e paga (a receber só conta depois de marcar pago) · ${+cfg.bv.b} pts por ponto novo no nome dele que fez pedido · ${+cfg.bv.c} pts por ponto em prospecção cadastrado · ${+cfg.bv.d} pt por visita registrada.</p>` }
+  <div class="tiers">${cfg.meta.niveis.map((t, i) => `<div class="tc ${i === 3 ? 'top3' : ''}"><span class="num">${esc(t.nome)}</span><span class="q">${i ? `a partir de ${+t.min} ${esc(U())}s pagas no mês` : 'abaixo da primeira meta'}</span><span>${esc(t.premio)}</span></div>`).join('')}</div>
+  <p class="pl">Conta ${esc(U())}s vendidas e pagas no mês (venda a prazo entra quando for paga). Ponto novo que fez o 2º pedido vale ${+cfg.meta.novo} ${esc(U())}s. O bônus fica retido se o vendedor tiver cobrança vencida há mais de ${+cfg.meta.travaDias} dias.</p>` }
 function colabDlg(email) { colabOpen = email; openId = null; const ym = tp === 'ant' ? ymDe('ant') : ymDe('mes'), c = colab(email, tp), b = bonusV(email, ym), t = today();
   const rec = peds.filter(o => o.por === email && o.pg === 'receber').sort((a, b) => (a.venc || a.d) < (b.venc || b.d) ? -1 : 1);
   const at = evs.filter(e => e.por === email).sort((a, b) => byD(b, a)).slice(0, 20);
@@ -507,9 +565,10 @@ function colabDlg(email) { colabOpen = email; openId = null; const ym = tp === '
    <div class="cb" data-adm><button class="btn sm ink" data-act="carga" data-id="${esc(email)}" data-v="e">Entregar mercadoria</button><button class="btn sm sun" data-act="carga" data-id="${esc(email)}" data-v="p">Receber pagamento</button><button class="btn sm line" data-act="carga" data-id="${esc(email)}" data-v="d">Devolução</button></div>
    ${k.n ? `<ul class="hist">${[...k.mv].sort((a, b) => a.d < b.d ? 1 : -1).slice(0, 25).map(m => `<li><span><b>${fd(m.d)}</b> · ${T[m.t]} ${m.t === 'p' ? `<b>${brl(m.v)}</b>${m.fp ? ' · ' + esc(m.fp) : ''}` : `${nf(m.q)} × ${esc(prodDe(m.prod)?.d || m.prod)} · ${brl((+m.q || 0) * (+m.pu || 0))}`}${m.o ? `<br><span class="pl">${esc(m.o)}</span>` : ''}</span><button class="lk" data-adm data-act="delMov" data-id="${esc(m.id)}" data-v="${esc(email)}">Apagar</button></li>`).join('')}</ul>` : '<p class="pl">Nenhuma entrega registrada ainda.</p>'}</div>` })()}
   <h3>Bonificação de ${esc(nomeMes(ym))}</h3>
-  <div class="card"><div class="ct bvct"><div>${tierV(b.nv)} <b style="font-size:20px;margin-left:6px">${b.pts} pts</b><div class="pl" style="margin-top:6px">${progV(b)}</div></div><div class="due"><small>prêmio</small><b style="display:block;max-width:220px">${esc(cfg.bv.niveis[b.nv].premio)}</b></div></div>
-   <div class="meta"><span><b>${nf(b.cx)}</b> ${esc(Us(b.cx))} pagas × ${+cfg.bv.a}</span><span><b>${b.novos}</b> pontos novos × ${+cfg.bv.b}</span><span><b>${b.prosp}</b> prospecções × ${+cfg.bv.c}</span><span><b>${b.vis}</b> visitas × ${+cfg.bv.d}</span></div>
-   ${b.pend ? `<div class="flag">${nf(b.pend)} ${esc(Us(b.pend))} ainda a receber. Entram nos pontos quando marcar pago.</div>` : ''}
+  <div class="card"><div class="ct bvct"><div>${tierV(b.nv)} <b style="font-size:20px;margin-left:6px">${nf(b.pts)} ${esc(Us(b.pts))}</b><div class="pl" style="margin-top:6px">${progV(b)}</div></div><div class="due"><small>prêmio</small><b style="display:block;max-width:220px">${esc(cfg.meta.niveis[b.nv].premio)}</b></div></div>
+   <div class="meta"><span><b>${nf(b.cx)}</b> ${esc(Us(b.cx))} vendidas e pagas</span><span><b>${b.novos}</b> ${b.novos === 1 ? 'ponto novo recomprou' : 'pontos novos recompraram'} × ${+cfg.meta.novo}</span></div>
+   ${b.pend ? `<div class="flag">${nf(b.pend)} ${esc(Us(b.pend))} vendidas este mês ainda a receber. Entram na meta quando forem pagas.</div>` : ''}
+   ${b.trava ? `<div class="flag" style="color:var(--brick)">Bônus retido: ${b.trava} ${b.trava === 1 ? 'cobrança vencida' : 'cobranças vencidas'} há mais de ${+cfg.meta.travaDias} dias (${brl(b.travaV)}).</div>` : ''}
    <div class="cb">${b.pago ? `<span class="pill p-ativo">Bônus pago em ${fd(b.pago.data)}${b.pago.valor ? ' · ' + esc(b.pago.valor) : ''}</span><button class="lk" data-adm data-act="bvDesfaz" data-id="${esc(email)}" data-v="${ym}">Desfazer</button>` : `<button class="btn sm ink" data-adm data-act="bvPago" data-id="${esc(email)}" data-v="${ym}">Registrar bônus de ${esc(nomeMes(ym))} como pago</button>`}</div></div>
   <h3>A receber <span>${rec.length}</span></h3>${rec.length ? `<ul class="hist">${rec.map(o => { const p = pdvs.get(o.pdv), vc = o.venc && o.venc < t;
     return `<li><span><b>${esc(p?.nome || 'Ponto removido')}</b> · ${brl(o.v)}<br><span class="pl">Pedido ${fd(o.d)}${o.venc ? ` · vence ${fd(o.venc)}` : ''}</span> ${vc ? '<span class="pill p-verificar">vencido</span>' : ''}</span><span><button class="lk" data-w data-act="pago" data-id="${esc(o.id)}" data-p="${esc(o.pdv)}">Marcar pago</button></span></li>` }).join('')}</ul>` : '<p class="pl">Nada a receber.</p>'}
@@ -517,12 +576,12 @@ function colabDlg(email) { colabOpen = email; openId = null; const ym = tp === '
     return `<li><span><button class="nm" style="font-size:15px" data-act="open" data-id="${esc(p.id)}">${esc(p.nome)}</button><br><span class="pl">${esc(lugar(p))}${s?.last ? ` · último pedido ${fd(s.last.d)}` : ''}${s?.qtd ? ` · ${nf(s.qtd)} ${esc(Us(s.qtd))} no total` : ''}</span></span><span>${pill(p.status)}</span></li>` }).join('')}</ul>` : '<p class="pl">Nenhum ponto no nome dele. Defina em cada ponto, no campo "Conquistado por".</p>'}
   <h3>Atividade recente</h3>${at.length ? `<ul class="hist">${at.map(e => `<li><span><b>${fd(e.d)}</b> · ${esc(pdvs.get(e.pdv)?.nome || 'Ponto removido')}<br><span class="pl">${e.t === 'v' ? 'Visita' : `Pedido de ${nf(e.q)} ${esc(Us(+e.q))}${+e.v ? ' · ' + brl(e.v) : ''}${e.pg === 'receber' ? ' · a receber' : ''}`}${has(e.s) ? ` · sobra ${nf(e.s)}` : ''}</span></span></li>`).join('')}</ul>` : '<p class="pl">Nenhum registro ainda.</p>'}`) }
 
-const V = { inicio: vInicio, time: vTime, produtos: vProdutos, notas: vNotas, repor: vRepor, pontos: vPontos, ranking: vRanking, bonus: vBonus, triagem: vTriagem, equipe: vEquipe, ajustes: vAjustes, mais: vMais };
+const V = { inicio: vInicio, cobrar: vCobrar, time: vTime, produtos: vProdutos, notas: vNotas, repor: vRepor, pontos: vPontos, ranking: vRanking, bonus: vBonus, triagem: vTriagem, equipe: vEquipe, ajustes: vAjustes, mais: vMais };
 const SO_GEST = ['ranking', 'bonus', 'triagem', 'ajustes', 'notas', 'equipe', 'time', 'produtos'];
 const cur = () => { const h = location.hash.slice(1); return V[h] && !(me && !can.gest() && SO_GEST.includes(h)) ? h : 'inicio' };
 function render() {
   if (!me || $('#app').hidden) return; derive(); kpis(); const v = cur(); document.body.classList.toggle('v-inicio', v === 'inicio'); if (v === 'inicio' && !render.f) { render.f = 1; document.body.classList.add('first'); setTimeout(() => document.body.classList.remove('first'), 700) }
-  const sub = ['ranking', 'triagem', 'equipe', 'ajustes', 'mais', 'notas', 'time', 'produtos'].includes(v);
+  const sub = ['ranking', 'triagem', 'equipe', 'ajustes', 'mais', 'notas', 'bonus'].includes(v);
   document.querySelectorAll('#tabs a').forEach(a => { const h = a.getAttribute('href'); a.classList.toggle('on', h === '#' + v || (sub && h === '#mais')) });
   const ae = document.activeElement, id = ae?.id, pos = ae?.selectionStart;
   $('#view').innerHTML = V[v]();
@@ -536,7 +595,7 @@ function show(title, body) { $('#dlgIn').innerHTML = `<div class="dh"><h2>${titl
 dlg.addEventListener('close', () => { openId = null; colabOpen = null; if (location.hash === '#novo') history.replaceState(null, '', '#inicio') });
 function detail(id) { const p = pdvs.get(id); if (!p) return; openId = id; colabOpen = null; const s = M.get(id);
   show(esc(p.nome), `<div class="pl">${esc(lugar(p))}${p.endereco ? ' · ' + esc(p.endereco) : ''}</div>
-  <div class="cb" style="margin:10px 0">${pill(p.status)} ${s.n ? tier(s.nivel) + ` <span class="pl">${s.pts} pts</span>` : ''} ${p.contato ? `<span class="pill">${esc(p.contato)}</span>` : ''}</div>
+  <div class="cb" style="margin:10px 0">${pill(p.status)} ${s.n ? tier(s.nivel) + ` <span class="pl">${nf(s.med)} ${esc(Us(s.med))}/mês</span>` : ''} ${p.contato ? `<span class="pill">${esc(p.contato)}</span>` : ''}</div>
   <div class="cb"><button class="btn sm ink" data-w data-act="newPed" data-id="${esc(id)}">Registrar</button><button class="btn sm line" data-w data-act="edit" data-id="${esc(id)}">Editar</button>${wa(p)}${mapa(p)}</div>
   <div class="stats"><div><span class="num">${s.n}</span><small>pedidos</small></div><div><span class="num">${nf(s.qtd)}</span><small>${esc(U())}s no total</small></div>
   <div><span class="num">${s.giro ? nf(s.giro) : '—'}</span><small>giro/semana${s.giro && !s.medido ? ' (est.)' : ''}</small></div><div><span class="num">${s.prox ? fd(s.prox) : '—'}</span><small>${s.prox ? 'repor ' + rel(s.dAte) : 'sem previsão'}</small></div></div>
@@ -553,6 +612,7 @@ function pdvForm(id) { const p = id ? pdvs.get(id) : { status: 'prospeccao', tip
   <label class="w">Nome do ponto<input name="nome" required value="${esc(p.nome)}" autocomplete="off"></label>
   <label>Status<select name="status">${Object.entries(ST).map(([k, v]) => o(k, v, p.status)).join('')}</select></label>
   <label>Tipo<select name="tipo">${TIPOS.map(t => o(t, t, p.tipo)).join('')}</select></label>
+  <label>Nome do responsável<input name="resp" value="${esc(p.resp)}" placeholder="Quem atende e paga"></label>
   <label>WhatsApp / telefone<input name="contato" type="tel" inputmode="tel" value="${esc(p.contato)}"></label>
   <label>Bairro<input name="bairro" value="${esc(p.bairro)}"></label>
   <label>Cidade<input name="cidade" value="${esc(p.cidade)}" list="cidList"></label>
@@ -575,7 +635,7 @@ function pdvForm(id) { const p = id ? pdvs.get(id) : { status: 'prospeccao', tip
 
 /* formulário de campo: pedido ou visita, feito para o polegar */
 function pedForm(pid, oid, ppid) {
-  const p0 = pdvs.get(pid || ppid), o = oid ? (p0?.hist || []).find(x => x.id === oid) : { t: 'p', d: today(), q: '', pg: 'pago' };
+  const p0 = pdvs.get(pid || ppid), o = oid ? (p0?.hist || []).find(x => x.id === oid) : { t: 'p', d: today(), q: '', pg: (+cfg.prazo || 0) > 0 ? 'receber' : 'pago' };
   if (!o) return; openId = null;
   const st = { pdv: p0?.id || '', t: o.t || 'p' };
   show(oid ? 'Editar registro' : 'Registrar', `<form class="f" data-form="ped" data-id="${esc(oid || '')}">
@@ -585,8 +645,8 @@ function pedForm(pid, oid, ppid) {
   <label>Sobra encontrada no ponto<div class="step"><button type="button" data-inc="s" data-d="-1">−</button><input name="s" type="number" inputmode="decimal" min="0" step="0.5" value="${esc(o.s ?? '')}" placeholder="não contei"><button type="button" data-inc="s" data-d="1">+</button></div><small>Quantas ${esc(U())}s ainda tinham lá. Mede o giro.</small></label>
   <label class="tp">Desconto (R$)<input name="ds" type="number" min="0" step="0.01" inputmode="decimal" value="${esc(o.ds || '')}" placeholder="0,00"></label>
   <label class="tp">Forma de pagamento<select name="fp">${FP.map(x => `<option ${(o.fp || 'PIX') === x ? 'selected' : ''}>${x}</option>`).join('')}</select></label>
-  <div class="w tp"><div class="seg" id="pgSeg"><button type="button" data-pg="pago">Pago</button><button type="button" data-pg="receber">A receber</button></div></div>
-  <label class="tp" id="vencL">Vencimento<input name="venc" type="date" value="${esc(o.venc || addD(today(), 7))}"></label>
+  <div class="w tp"><div class="seg" id="pgSeg"><button type="button" data-pg="receber">A prazo</button><button type="button" data-pg="pago">Pago na hora</button></div></div>
+  <div class="w tp" id="vencL"><div class="chips" style="margin:0 0 6px">${[7, 15, 21, 30].map(n => `<button type="button" class="chip sm" data-prz="${n}">${n} dias</button>`).join('')}</div><label>Vencimento do pagamento<input name="venc" type="date" value="${esc(o.venc || addD(o.d || today(), +cfg.prazo || 15))}"><small>O ponto paga nesse dia. Na véspera aparece em Cobranças para mandar o lembrete.</small></label></div>
   <div class="w tp tot" id="totBox"></div>
   <label>Data<input name="d" type="date" required value="${esc(o.d)}"></label>
   <label>Observação<input name="o" value="${esc(o.o)}" placeholder="Opcional"></label>
@@ -610,12 +670,14 @@ function pedForm(pid, oid, ppid) {
     if (t.dataset.itu != null) its[+t.dataset.itu].pu = +t.value || 0;
     if (t.name === 'ds' || t.dataset.itq != null || t.dataset.itu != null) paintTot() });
   f.addEventListener('change', e => { const t = e.target; if (t.dataset.itp != null) { const p = prodDe(t.value), i = its[+t.dataset.itp]; Object.assign(i, { c: p.c, d: p.d, un: p.un, ncm: p.ncm, pu: +p.p || i.pu }); paintIts() } });
+  const paintPrz = () => { const n = f.elements.venc.value && f.elements.d.value ? D(f.elements.venc.value) - D(f.elements.d.value) : null; f.querySelectorAll('[data-prz]').forEach(b => b.classList.toggle('on', +b.dataset.prz === n)) };
+  f.addEventListener('change', e => { if (e.target.name === 'd' && f.dataset.pg === 'receber' && !oid) { f.elements.venc.value = addD(e.target.value, +cfg.prazo || 15); paintPrz() } if (e.target.name === 'venc') paintPrz() });
   const paint = () => {
     f.dataset.t = st.t; f.dataset.pdv = st.pdv;
     f.querySelectorAll('[data-t]').forEach(b => b.classList.toggle('on', b.dataset.t === st.t));
     f.querySelectorAll('.tp').forEach(x => x.hidden = st.t === 'v');
     f.querySelectorAll('[data-pg]').forEach(b => b.classList.toggle('on', b.dataset.pg === f.dataset.pg));
-    $('#vencL').hidden = st.t === 'v' || f.dataset.pg !== 'receber';
+    $('#vencL').hidden = st.t === 'v' || f.dataset.pg !== 'receber'; paintPrz();
     const p = pdvs.get(st.pdv), box = $('#pdvBox');
     if (p) box.innerHTML = `<div class="chosen"><div><b>${esc(p.nome)}</b><div class="pl">${esc(lugar(p))}</div></div>${oid ? '' : '<button type="button" class="btn sm line" id="pdvTroca">Trocar</button>'}</div>`;
     else { box.innerHTML = `<label>Ponto de venda<input id="pdvQ" type="search" placeholder="Digite o nome, bairro ou cidade" autocomplete="off"></label><div class="pick" id="pdvRes"></div>`; const q = $('#pdvQ'); q.addEventListener('input', find); find(); setTimeout(() => q.focus(), 50) }
@@ -628,6 +690,7 @@ function pedForm(pid, oid, ppid) {
     const b = e.target.closest('button'); if (!b) return;
     if (b.dataset.t) { st.t = b.dataset.t; paint() }
     if (b.dataset.pg) { f.dataset.pg = b.dataset.pg; paint() }
+    if (b.dataset.prz) { f.elements.venc.value = addD(f.elements.d.value || today(), +b.dataset.prz); paintPrz() }
     if (b.dataset.pick) { st.pdv = b.dataset.pick; paint() }
     if (b.dataset.itd != null) { const i = its[+b.dataset.itd]; i.q = Math.max(0, (+i.q || 0) + (+b.dataset.d)); paintIts(); return }
     if (b.dataset.itx != null) { its.splice(+b.dataset.itx, 1); paintIts(); return }
@@ -638,23 +701,27 @@ function pedForm(pid, oid, ppid) {
 }
 
 /* comprovante de venda (pedido) */
-function recHTML(p, o) { const e = emp(), its = itensDe(o), sub = subtotal(o), nfo = o.nf;
+const condPg = o => o.pg === 'receber' ? `A prazo${o.venc ? ` · ${D(o.venc) - D(o.d)} dias · vence ${brD(o.venc)}` : ''}` : `Pago na hora${o.pgEm && o.pgEm !== o.d ? ' em ' + brD(o.pgEm) : ''}`;
+function recHTML(p, o) { const e = emp(), its = itensDe(o), sub = subtotal(o), nfo = o.nf, aberto = o.pg === 'receber';
   const L = (k, v) => v ? `<div><span>${k}</span>${esc(v)}</div>` : '';
-  return `<div class="rec" id="rec"><div class="rh"><img src="logo.png" alt=""><div><b>PEDIDO DE VENDA</b><span>Nº ${esc(o.n || o.id)}</span><span>${brD(o.d)}</span></div></div>
-  <div class="rb"><h4>Empresa</h4>${L('', e.razao || 'Seda de Favela')}${L('CNPJ/CPF', e.doc)}${L('IE', e.ie)}${L('', [e.endereco, e.bairro].filter(Boolean).join(' - '))}${L('', [e.cidade, e.uf].filter(Boolean).join('/') + (e.cep ? ' · CEP ' + e.cep : ''))}${L('Contato', [e.tel, e.email].filter(Boolean).join(' · '))}</div>
-  <div class="rb"><h4>Cliente</h4>${L('', p.razao || p.nome)}${p.razao && p.razao !== p.nome ? L('Ponto', p.nome) : ''}${L('CPF/CNPJ', p.doc)}${L('IE', p.ie)}${L('', p.endereco)}${L('', [p.bairro, [p.cidade, p.uf].filter(Boolean).join('/')].filter(Boolean).join(' · ') + (p.cep ? ' · CEP ' + p.cep : ''))}${L('Contato', p.contato)}</div>
-  <table class="rt"><thead><tr><th>Produto</th><th class="r">Qtd</th><th class="r">Unit.</th><th class="r">Total</th></tr></thead><tbody>${its.map(i => `<tr><td>${esc(i.d)}<small>${esc([i.c, i.ncm && 'NCM ' + i.ncm].filter(Boolean).join(' · '))}</small></td><td class="r">${nf(i.q)} ${esc(i.un || '')}</td><td class="r">${brl(i.pu)}</td><td class="r">${brl(i.q * i.pu)}</td></tr>`).join('')}</tbody></table>
+  return `<div class="rec" id="rec"><div class="rh"><img src="logo.png" alt=""><div><b>COMPROVANTE DE VENDA</b><span>Pedido nº ${esc(o.n || o.id)}</span><span>${brD(o.d)} · vendedor ${esc(o.pn || nomeDe(o.por))}</span></div></div>
+  <div class="rb two"><div><h4>Vendedor (empresa)</h4>${L('', e.fantasia)}${e.razao ? L('Razão social', e.razao) : ''}${L('CNPJ', e.doc)}${L('IE', e.ie)}${L('', [e.endereco, e.bairro].filter(Boolean).join(' - '))}${L('', [e.cidade, e.uf].filter(Boolean).join('/') + (e.cep ? ' · CEP ' + e.cep : ''))}${L('', [e.tel, e.email].filter(Boolean).join(' · '))}</div>
+  <div><h4>Cliente</h4>${L('', p.razao || p.nome)}${p.razao && p.razao !== p.nome ? L('Ponto', p.nome) : ''}${L('CPF/CNPJ', p.doc)}${L('IE', p.ie)}${L('', p.endereco)}${L('', [p.bairro, [p.cidade, p.uf].filter(Boolean).join('/')].filter(Boolean).join(' · ') + (p.cep ? ' · CEP ' + p.cep : ''))}${L('Contato', p.contato)}</div></div>
+  <table class="rt"><thead><tr><th>Produto</th><th class="r">Qtd</th><th class="r">Unit.</th><th class="r">Total</th></tr></thead><tbody>${its.map(i => `<tr><td>${esc(i.d)}<small>${esc(i.c || '')}</small></td><td class="r">${nf(i.q)} ${esc(i.un || '')}</td><td class="r">${brl(i.pu)}</td><td class="r">${brl(i.q * i.pu)}</td></tr>`).join('')}</tbody></table>
   <div class="rs">${o.ds ? `<div><span>Subtotal</span>${brl(sub)}</div><div><span>Desconto</span>- ${brl(o.ds)}</div>` : ''}<div class="big"><span>Total</span>${brl(o.v)}</div></div>
-  <div class="rb"><h4>Pagamento</h4>${L('Forma', o.fp)}${L('Situação', o.pg === 'receber' ? 'A receber' + (o.venc ? ' até ' + brD(o.venc) : '') : 'Pago')}${o.pg === 'receber' && e.pix ? L('Chave PIX', e.pix) : ''}</div>
+  <div class="rb"><h4>Pagamento</h4>${L('Condição', condPg(o))}${L('Forma', o.fp)}${L('Situação', aberto ? 'Em aberto' : 'Pago')}</div>
+  ${aberto ? `<div class="rpix"><b>Pague por PIX até ${o.venc ? brD(o.venc) : 'o vencimento'}</b>${e.pix ? `<div>Chave PIX: <b>${esc(e.pix)}</b></div>` : ''}<div>Favorecido: ${esc(e.fantasia)}${e.razao ? ' · ' + esc(e.razao) : ''}</div><div>CNPJ: ${esc(e.doc)}</div></div>` : ''}
   ${o.o ? `<div class="rb"><h4>Observação</h4><div>${esc(o.o)}</div></div>` : ''}
-  <div class="rf">Vendedor: ${esc(o.pn || o.por || '')}${nfo ? ` · NF-e: ${nfo.st === 'emitida' ? 'emitida nº ' + esc(nfo.num || '') : 'a emitir'}` : ''}<br>${esc(e.rodape || 'Documento de controle interno, sem valor fiscal. A nota fiscal eletrônica, quando emitida, é enviada separadamente.')}</div></div>` }
+  <div class="rsig"><div>Recebi a mercadoria acima</div><div class="ln"></div><div class="pl">Nome e assinatura de quem recebeu</div></div>
+  <div class="rf">${nfo ? `Nota fiscal: ${nfo.st === 'emitida' ? 'emitida nº ' + esc(nfo.num || '') : 'será emitida e enviada separadamente'}. ` : ''}${esc(e.rodape || 'Este comprovante é um documento de controle da venda e não substitui a nota fiscal.')}<br>${esc([e.insta, e.site].filter(Boolean).join(' · '))}</div></div>` }
 function recibo(pid, oid) { const p = pdvs.get(pid), o = (p?.hist || []).find(x => x.id === oid); if (!p || !o) return; openId = null;
   const falta = o.nf && o.nf.st !== 'emitida' ? faltaNF(p) : [], dg = String(p.contato || '').replace(/\D/g, '');
-  show('Pedido salvo', `${recHTML(p, o)}
+  show('Comprovante de venda', `${recHTML(p, o)}
   ${falta.length ? `<div class="flag noprint" style="margin-top:12px">Para a nota fiscal ainda falta: <b>${falta.map(esc).join(', ')}</b>. <button class="lk" data-act="edit" data-id="${esc(pid)}">Completar cliente</button></div>` : ''}
   <div class="cb noprint" style="margin-top:14px"><button class="btn sun" data-act="recShare" data-p="${esc(pid)}" data-id="${esc(oid)}">Enviar imagem</button>${dg.length >= 10 ? `<button class="btn line" data-act="recWa" data-p="${esc(pid)}" data-id="${esc(oid)}">WhatsApp (texto)</button>` : ''}<button class="btn line" data-act="recPrint">Imprimir / PDF</button>${o.nf && o.nf.st !== 'emitida' ? `<button class="btn line" data-act="notaCopy" data-p="${esc(pid)}" data-id="${esc(oid)}">Copiar dados p/ nota</button>` : ''}<button class="btn line" data-act="open" data-id="${esc(pid)}">Ver ponto</button></div>`) }
-function recTexto(p, o) { const e = emp(), its = itensDe(o);
-  return [`*PEDIDO DE VENDA Nº ${o.n || o.id}*`, `${e.razao || 'Seda de Favela'}${e.doc ? ' · ' + e.doc : ''}`, `Data: ${brD(o.d)}`, `Cliente: ${p.razao || p.nome}${p.doc ? ' · ' + p.doc : ''}`, '', ...its.map(i => `• ${nf(i.q)} ${i.un || ''} ${i.d} x ${brl(i.pu)} = ${brl(i.q * i.pu)}`), o.ds ? `Desconto: - ${brl(o.ds)}` : '', `*Total: ${brl(o.v)}*`, `Pagamento: ${o.fp || ''} · ${o.pg === 'receber' ? 'a receber' + (o.venc ? ' até ' + brD(o.venc) : '') : 'pago'}`, o.pg === 'receber' && e.pix ? `PIX: ${e.pix}` : '', `Vendedor: ${o.pn || ''}`, '', '_Documento sem valor fiscal._'].filter(x => x !== '').join('\n') }
+function recTexto(p, o) { const e = emp(), its = itensDe(o), ab = o.pg === 'receber';
+  return [`*COMPROVANTE DE VENDA · ${e.fantasia}*`, `Pedido nº ${o.n || o.id} · ${brD(o.d)}`, `CNPJ ${e.doc}${e.ie ? ' · IE ' + e.ie : ''}`, `${e.tel}`, '', `*Cliente:* ${p.razao || p.nome}${p.doc ? ' · ' + p.doc : ''}`, '', ...its.map(i => `• ${nf(i.q)} ${i.un || ''} ${i.d} x ${brl(i.pu)} = ${brl(i.q * i.pu)}`), o.ds ? `Desconto: - ${brl(o.ds)}` : '', `*Total: ${brl(o.v)}*`, '',
+    `Condição: ${condPg(o)}`, `Forma: ${o.fp || ''}`, ab ? `\n*Pagamento por PIX até ${o.venc ? brD(o.venc) : 'o vencimento'}*${e.pix ? `\nChave: ${e.pix}` : ''}\nFavorecido: ${e.fantasia} · CNPJ ${e.doc}` : 'Situação: pago', '', `Vendedor: ${o.pn || ''}`, '_Comprovante de controle da venda. Não substitui a nota fiscal._'].filter(x => x !== '').join('\n') }
 function notaTexto(p, o) { const its = itensDe(o), L = [];
   L.push('DESTINATÁRIO', `CNPJ/CPF: ${p.doc || '(falta)'}`, `Nome/Razão social: ${p.razao || p.nome}`, `Inscrição estadual: ${p.ie || 'Isento/não contribuinte'}`, `Endereço: ${p.endereco || '(falta)'}`, `Bairro: ${p.bairro || ''}`, `CEP: ${p.cep || '(falta)'}`, `Município/UF: ${p.cidade || ''}/${p.uf || ''}`, `Telefone: ${p.contato || ''}`, `E-mail: ${p.email || ''}`, '', 'PRODUTOS');
   its.forEach((i, k) => L.push(`${k + 1}) ${i.d}`, `   Código: ${i.c || ''} · NCM: ${i.ncm || ''} · Unidade: ${i.un || ''}`, `   Quantidade: ${String(i.q).replace('.', ',')} · Valor unitário: ${(+i.pu).toFixed(2).replace('.', ',')} · Valor total: ${(i.q * i.pu).toFixed(2).replace('.', ',')}`));
@@ -663,15 +730,15 @@ function notaTexto(p, o) { const its = itensDe(o), L = [];
 async function recImagem(p, o) {
   const W = 1080, P = 64, c = document.createElement('canvas'), x = c.getContext('2d'), e = emp(), its = itensDe(o), rows = [];
   const T = (t, f, col = '#1a1714', a = 'left', gap = 12) => rows.push({ t: String(t ?? ''), f, col, a, gap });
-  T('PEDIDO DE VENDA', '800 56px "Barlow Condensed"', '#8a0b0b', 'left', 6); T('Nº ' + (o.n || o.id) + '  ·  ' + brD(o.d), '600 30px Barlow', '#1a1714', 'left', 30);
-  T('EMPRESA', '700 24px Barlow', '#8a8178', 'left', 4); T(e.razao || 'Seda de Favela', '600 30px Barlow'); if (e.doc) T('CNPJ/CPF ' + e.doc + (e.ie ? '  ·  IE ' + e.ie : ''), '400 26px Barlow'); if (e.tel) T(e.tel, '400 26px Barlow', '#1a1714', 'left', 26);
+  T('COMPROVANTE DE VENDA', '800 52px "Barlow Condensed"', '#8a0b0b', 'left', 6); T('Nº ' + (o.n || o.id) + '  ·  ' + brD(o.d), '600 30px Barlow', '#1a1714', 'left', 30);
+  T('VENDEDOR (EMPRESA)', '700 24px Barlow', '#8a8178', 'left', 4); T(e.fantasia, '600 30px Barlow'); T('CNPJ ' + e.doc + (e.ie ? '  ·  IE ' + e.ie : ''), '400 26px Barlow'); T([e.endereco, e.bairro, e.cidade + '/' + e.uf].filter(Boolean).join(' · '), '400 24px Barlow'); T([e.tel, e.insta].filter(Boolean).join('  ·  '), '400 24px Barlow', '#1a1714', 'left', 26);
   T('CLIENTE', '700 24px Barlow', '#8a8178', 'left', 4); T(p.razao || p.nome, '600 30px Barlow'); if (p.doc) T('CPF/CNPJ ' + p.doc, '400 26px Barlow'); const end = [p.endereco, p.bairro, [p.cidade, p.uf].filter(Boolean).join('/')].filter(Boolean).join(' · '); if (end) T(end, '400 24px Barlow', '#1a1714', 'left', 26);
   T('PRODUTOS', '700 24px Barlow', '#8a8178', 'left', 8);
   its.forEach(i => { T(i.d, '600 28px Barlow', '#1a1714', 'left', 2); T(`${nf(i.q)} ${i.un || ''} x ${brl(i.pu)} = ${brl(i.q * i.pu)}`, '400 26px Barlow', '#1a1714', 'left', 14) });
   if (o.ds) T('Desconto: - ' + brl(o.ds), '400 26px Barlow');
   T('TOTAL ' + brl(o.v), '800 52px "Barlow Condensed"', '#1a1714', 'left', 20);
-  T(`Pagamento: ${o.fp || ''} · ${o.pg === 'receber' ? 'a receber' + (o.venc ? ' até ' + brD(o.venc) : '') : 'pago'}`, '600 26px Barlow'); if (o.pg === 'receber' && e.pix) T('PIX: ' + e.pix, '600 26px Barlow');
-  T('Vendedor: ' + (o.pn || ''), '400 24px Barlow', '#1a1714', 'left', 28); T('Documento sem valor fiscal.', 'italic 400 22px Barlow', '#8a8178');
+  T('Condição: ' + condPg(o) + (o.fp ? '  ·  ' + o.fp : ''), '600 26px Barlow'); if (o.pg === 'receber') { T('PAGUE POR PIX ATÉ ' + (o.venc ? brD(o.venc) : 'O VENCIMENTO'), '700 28px Barlow', '#8a0b0b', 'left', 4); if (e.pix) T('Chave PIX: ' + e.pix, '600 26px Barlow'); T('Favorecido: ' + e.fantasia + ' · CNPJ ' + e.doc, '400 24px Barlow', '#1a1714', 'left', 14) }
+  T('Vendedor: ' + (o.pn || ''), '400 24px Barlow', '#1a1714', 'left', 28); T('Comprovante de controle da venda. Não substitui a nota fiscal.', 'italic 400 22px Barlow', '#8a8178');
   let h = P + 200; x.font = '10px Barlow'; for (const r of rows) h += parseInt(r.f.match(/(\d+)px/)[1]) * 1.25 + r.gap; c.width = W; c.height = h + P;
   x.fillStyle = '#fff'; x.fillRect(0, 0, W, c.height); x.fillStyle = '#8a0b0b'; x.fillRect(0, 0, W, 14);
   try { await document.fonts.ready; const img = new Image(); img.src = 'logo.png'; await img.decode(); const s = 170 / img.height; x.drawImage(img, W - P - img.width * s, P - 10, img.width * s, 170) } catch { }
@@ -679,8 +746,8 @@ async function recImagem(p, o) {
   return new Promise(r => c.toBlob(r, 'image/png')) }
 
 function bonForm(id) { const p = pdvs.get(id), s = M.get(id); openId = null;
-  show('Registrar bonificação', `<form class="f" data-form="bon" data-id="${esc(id)}"><p class="w"><b>${esc(p.nome)}</b> está no nível ${tier(s.nivel)} com ${s.pts} pts.</p>
-  <label class="w">O que foi entregue<input name="desc" required value="${esc(cfg.niveis[s.nivel].premio)}"></label><label>Data<input name="data" type="date" value="${today()}"></label>
+  show('Registrar bonificação', `<form class="f" data-form="bon" data-id="${esc(id)}"><p class="w"><b>${esc(p.nome)}</b> está no nível ${tier(s.nivel)} (${nf(s.med)} ${esc(Us(s.med))}/mês).</p>
+  <label class="w">O que foi entregue<input name="desc" required value="${esc(cfg.clube.niveis[s.nivel].ben)}"></label><label>Data<input name="data" type="date" value="${today()}"></label>
   <div class="fa w"><button type="button" class="btn line" data-act="close">Cancelar</button><button class="btn ink">Registrar</button></div></form>`) }
 
 /* ---------- gravação ---------- */
@@ -695,20 +762,20 @@ const stripId = p => { const { id, ...r } = p; return r };
 
 document.addEventListener('submit', async e => {
   const f = e.target; if (f.id === 'loginF') return; e.preventDefault(); const v = Object.fromEntries(new FormData(f));
-  if (f.id === 'cfgF') { const c = { ...cfg, unidade: v.unidade.trim() || 'caixa', preco: +v.preco || 0, ciclo: +v.ciclo || 15, janela: +v.janela || 90, ptsCaixa: +v.ptsCaixa || 0, ptsPontual: +v.ptsPontual || 0, ptsIndicacao: +v.ptsIndicacao || 0,
-      niveis: cfg.niveis.map((_, i) => ({ nome: v['n' + i].trim(), min: i ? +v['m' + i] || 0 : 0, premio: v['p' + i].trim() })),
-      bv: { a: +v.bva || 0, b: +v.bvb || 0, c: +v.bvc || 0, d: +v.bvd || 0, niveis: cfg.bv.niveis.map((_, i) => ({ nome: v['vn' + i].trim(), min: i ? +v['vm' + i] || 0 : 0, premio: v['vp' + i].trim() })) } };
-    for (let i = 1; i < 4; i++) if (c.bv.niveis[i].min <= c.bv.niveis[i - 1].min) return toast('Na bonificação da equipe, cada nível precisa de mais pontos que o anterior.');
-    for (let i = 1; i < 4; i++) if (c.niveis[i].min <= c.niveis[i - 1].min) return toast('Cada nível precisa de mais pontos que o anterior.');
+  if (f.id === 'cfgF') { const c = { ...cfg, unidade: v.unidade.trim() || 'caixa', preco: +v.preco || 0, ciclo: +v.ciclo || 15, prazo: +v.prazo || 0,
+      clube: { ind: (v.cind || '').trim(), niveis: cfg.clube.niveis.map((_, i) => ({ nome: v['cn' + i].trim(), med: i ? +v['cm' + i] || 0 : 0, meses: i ? +v['cs' + i] || 0 : 0, pont: i ? +v['cp' + i] || 0 : 0, ben: v['cb' + i].trim() })) },
+      meta: { novo: +v.mnovo || 0, travaDias: +v.mtrava || 0, niveis: cfg.meta.niveis.map((_, i) => ({ nome: v['vn' + i].trim(), min: i ? +v['vm' + i] || 0 : 0, premio: v['vp' + i].trim() })) } };
+    for (let i = 1; i < 4; i++) if (c.meta.niveis[i].min <= c.meta.niveis[i - 1].min) return toast('Na meta da equipe, cada nível precisa de mais caixas que o anterior.');
+    for (let i = 2; i < 4; i++) if (c.clube.niveis[i].med < c.clube.niveis[i - 1].med) return toast('No clube, cada nível precisa de média igual ou maior que o anterior.');
     return fire(setDoc(doc(db, 'config', 'geral'), c), 'Ajustes salvos') }
   if (f.id === 'teamF') return addMember(v, f);
   if (f.id === 'cargaF') { const em = f.dataset.em, t = f.dataset.t, m = { id: rid(), em, t, d: v.d, o: (v.o || '').trim(), por: me.email };
     if (t === 'p') Object.assign(m, { v: +v.v || 0, fp: v.fp }); else Object.assign(m, { prod: v.prod, q: +v.q || 0, pu: +v.pu || 0 });
     salvaCargas([...cargas, m], t === 'e' ? 'Entrega registrada' : t === 'p' ? 'Pagamento registrado' : 'Devolução registrada'); cargas = [...cargas, m]; return colabDlg(em) }
-  if (f.id === 'prodF2') { const l = clone(produtos()), k = f.dataset.k, p = { c: v.c.trim().toUpperCase(), d: v.d.trim(), cat: (v.cat || '').trim() || 'Produtos', un: (v.un || 'UN').trim().toUpperCase(), p: +v.p || 0, sug: +v.sug || 0, ncm: (v.ncm || '').trim(), f: v.f === '' ? 1 : +v.f, ativo: !!v.ativo };
+  if (f.id === 'prodF2') { const l = clone(produtos()), k = f.dataset.k, p = { c: v.c.trim().toUpperCase(), d: v.d.trim(), cat: (v.cat || '').trim() || 'Produtos', un: (v.un || 'UN').trim().toUpperCase(), p: +v.p || 0, sug: +v.sug || 0, ncm: (v.ncm || '').trim(), f: v.f === '' ? 1 : +v.f, ativo: !!v.ativo, foto: (v.foto || '').trim() };
     if (l.some((x, i) => x.c === p.c && String(i) !== k)) return toast('Já existe um produto com esse código.');
     if (k === '') l.push(p); else l[+k] = p; dlg.close(); return fire(setDoc(doc(db, 'config', 'geral'), { ...cfg, produtos: l }), 'Produto salvo') }
-  if (f.id === 'empF') { const e = {}; for (const k of ['razao', 'doc', 'ie', 'endereco', 'bairro', 'cidade', 'uf', 'cep', 'tel', 'email', 'pix', 'rodape']) e[k] = (v[k] || '').trim(); e.uf = e.uf.toUpperCase();
+  if (f.id === 'empF') { const e = {}; for (const k of ['fantasia', 'razao', 'doc', 'ie', 'endereco', 'bairro', 'cidade', 'uf', 'cep', 'tel', 'email', 'pix', 'insta', 'site', 'rodape']) e[k] = (v[k] || '').trim(); e.uf = e.uf.toUpperCase();
     return fire(setDoc(doc(db, 'config', 'geral'), { ...cfg, empresa: e, controlaNF: !!v.controlaNF }), 'Dados da empresa salvos') }
   if (f.id === 'prodF') { const l = produtos().map((_, k) => ({ c: v['c' + k].trim(), d: v['d' + k].trim(), un: (v['un' + k] || 'UN').trim().toUpperCase(), p: +v['p' + k] || 0, ncm: (v['ncm' + k] || '').trim(), f: v['f' + k] === '' ? 1 : +v['f' + k] }));
     if (new Set(l.map(x => x.c)).size !== l.length) return toast('Cada produto precisa de um código diferente.');
@@ -716,7 +783,7 @@ document.addEventListener('submit', async e => {
   if (f.dataset.form === 'nf') { const p = pdvs.get(f.dataset.p); fire(updateDoc(pref(p.id), { hist: p.hist.map(x => x.id === f.dataset.id ? { ...x, nf: { st: 'emitida', num: v.num.trim(), data: v.data, chave: v.chave.trim() } } : x) }), 'NF-e marcada como emitida'); dlg.close(); return }
   const t = f.dataset.form, id = f.dataset.id;
   if (t === 'pdv') { const ind = v.ind ? byLbl(v.ind) : null;
-    const d = { nome: v.nome.trim(), status: v.status, tipo: v.tipo, contato: v.contato.trim(), bairro: v.bairro.trim(), cidade: v.cidade.trim(), uf: v.uf.trim().toUpperCase(), endereco: v.endereco.trim(), redes: v.redes.trim(), doc: v.doc.trim(), razao: v.razao.trim(), ie: v.ie.trim(), cep: v.cep.trim(), email: v.email.trim(), ciclo: +v.ciclo || null, proxContato: v.proxContato || null, indicadoPor: ind && ind.id !== id ? ind.id : null, obs: v.obs.trim(), atualizado: today(), atualizadoPor: me.email };
+    const d = { nome: v.nome.trim(), resp: (v.resp || '').trim(), status: v.status, tipo: v.tipo, contato: v.contato.trim(), bairro: v.bairro.trim(), cidade: v.cidade.trim(), uf: v.uf.trim().toUpperCase(), endereco: v.endereco.trim(), redes: v.redes.trim(), doc: v.doc.trim(), razao: v.razao.trim(), ie: v.ie.trim(), cep: v.cep.trim(), email: v.email.trim(), ciclo: +v.ciclo || null, proxContato: v.proxContato || null, indicadoPor: ind && ind.id !== id ? ind.id : null, obs: v.obs.trim(), atualizado: today(), atualizadoPor: me.email };
     if ('dono' in v) d.dono = v.dono || null;
     if (id) { fire(updateDoc(pref(id), d), 'Ponto atualizado'); detail(id) }
     else { const r = doc(collection(db, 'pdvs')); fire(setDoc(r, { ...d, hist: [], flags: [], criado: today(), criadoPor: me.email, criadoPorNome: me.nome }), 'Ponto cadastrado'); dlg.close() }
@@ -728,7 +795,7 @@ document.addEventListener('submit', async e => {
     if (tv && !has(v.s) && !v.o.trim()) return toast('Na visita, anote a sobra ou uma observação.');
     const old = id ? (p.hist || []).find(x => x.id === id) : null;
     const en = { id: id || rid(), t: tv ? 'v' : 'p', d: v.d, q: tv ? 0 : q, v: tv ? 0 : tot, s: has(v.s) ? +v.s : null, pg: tv ? null : f.dataset.pg, o: v.o.trim(), por: old?.por || me.email, pn: old?.pn || me.nome, em: old?.em || Date.now() };
-    if (!tv) Object.assign(en, { n: old?.n || numPedido(v.d), it: its, ds, fp: v.fp, venc: f.dataset.pg === 'receber' ? v.venc : null, nf: old?.nf || (cfg.controlaNF === false ? null : { st: 'pendente' }) });
+    if (!tv) Object.assign(en, { n: old?.n || numPedido(v.d), it: its, ds, fp: v.fp, venc: f.dataset.pg === 'receber' ? v.venc : null, pgEm: f.dataset.pg === 'receber' ? null : (old?.pgEm || v.d), lemb: old?.lemb || null, nf: old?.nf || (cfg.controlaNF === false ? null : { st: 'pendente' }) });
     if (old) fire(updateDoc(pref(p.id), { hist: (p.hist || []).map(x => x.id === id ? en : x) }), 'Registro atualizado');
     else { const up = { hist: arrayUnion(en), atualizado: today() }; let msg = tv ? 'Visita registrada' : 'Pedido salvo';
       if (!tv && p.status !== 'ativo') { up.status = 'ativo'; msg += `. ${p.nome} agora é Ativo` }
@@ -742,7 +809,7 @@ async function addMember(v, f) {
   const email = v.email.trim().toLowerCase(); if (!navigator.onLine) return toast('Para dar acesso precisa de internet.');
   if (email === ADMIN_EMAIL.toLowerCase()) return toast('Esse e-mail já é a administradora.');
   try {
-    await setDoc(doc(db, 'acessos', email), { nome: v.nome.trim(), papel: v.papel, ativo: true, criado: today(), criadoPor: me.email });
+    await setDoc(doc(db, 'acessos', email), { nome: v.nome.trim(), papel: v.papel === 'adminv' ? 'admin' : v.papel, vende: v.papel === 'adminv', ativo: true, criado: today(), criadoPor: me.email });
     // cria a conta numa instância separada, para a administradora não ser deslogada
     const sec = initializeApp(firebaseConfig, 'conta-' + Date.now()), sa = getAuth(sec);
     try { await createUserWithEmailAndPassword(sa, email, v.senha); toast(`Acesso criado. Passe para ${v.nome.trim()}: e-mail ${email} e a senha inicial.`) }
@@ -767,12 +834,13 @@ document.addEventListener('click', e => {
   if (act === 'tp') { tp = v; return render() }
   if (act === 'colab') return colabDlg(id);
   if (act === 'ilf') { ilf = v; return render() }
+  if (act === 'lemb') { const p = pdvs.get(a.dataset.p), o = (p?.hist || []).find(x => x.id === id); if (!o) return; const u = waLink(p, lembreteTexto({ ...o, pdv: p.id })); if (!u) return toast('Esse ponto não tem WhatsApp no cadastro.'); window.open(u, '_blank', 'noopener'); if (can.write()) fire(updateDoc(pref(p.id), { hist: p.hist.map(x => x.id === id ? { ...x, lemb: today() } : x) })); return }
   if (act === 'carga' && can.admin()) return cargaForm(id, v);
   if (act === 'delMov' && can.admin()) { if (!confirm('Apagar este lançamento de mercadoria?')) return; salvaCargas(cargas.filter(m => m.id !== id), 'Lançamento apagado'); return colabDlg(v) }
   if (act === 'prodNovo' && can.admin()) return prodForm('');
   if (act === 'prodEd' && can.admin()) return prodForm(id);
   if (act === 'prodCat' && can.admin()) { const l = clone(produtos()), add = CATALOGO_NOV26.filter(c => !l.some(p => p.c === c.c)); const v0 = l.find(p => p.c === 'SDF-CX'); if (v0) { v0.cat = v0.cat || 'Sedas'; if (add.some(p => p.f === 1)) v0.ativo = false } return fire(setDoc(doc(db, 'config', 'geral'), { ...cfg, produtos: [...l, ...add] }), `${add.length} produtos do catálogo carregados`) }
-  if (act === 'bvPago' && can.admin()) { const val = prompt('Valor ou prêmio entregue (opcional):', cfg.bv.niveis[bonusV(id, v).nv].premio) ; if (val === null) return; const m = { ...(cfg.pagBV || {}), [v + '|' + id]: { data: today(), valor: val.trim(), por: me.email, pts: bonusV(id, v).pts } }; return fire(setDoc(doc(db, 'config', 'geral'), { ...cfg, pagBV: m }), 'Bônus registrado como pago') }
+  if (act === 'bvPago' && can.admin()) { const val = prompt('Valor ou prêmio entregue (opcional):', cfg.meta.niveis[bonusV(id, v).nv].premio) ; if (val === null) return; const m = { ...(cfg.pagBV || {}), [v + '|' + id]: { data: today(), valor: val.trim(), por: me.email, pts: bonusV(id, v).pts } }; return fire(setDoc(doc(db, 'config', 'geral'), { ...cfg, pagBV: m }), 'Bônus registrado como pago') }
   if (act === 'bvDesfaz' && can.admin()) { const m = { ...(cfg.pagBV || {}) }; delete m[v + '|' + id]; return fire(setDoc(doc(db, 'config', 'geral'), { ...cfg, pagBV: m }), 'Registro de bônus desfeito') }
   if (act === 'iv') { iv = v; return render() }
   if (act === 'skip') { skip.add(id); return render() }
@@ -801,7 +869,7 @@ document.addEventListener('click', e => {
   if (act === 'tri') { const p = pdvs.get(id), prev = p.status; fire(updateDoc(pref(id), { status: st, atualizado: today(), atualizadoPor: me.email })); toast(`${p.nome}: ${ST[st]}`, () => fire(updateDoc(pref(id), { status: prev }))); return }
   if (act === 'clrFlag') return fire(updateDoc(pref(id), { flags: [] }), 'Observação resolvida');
   if (act === 'pago' || act === 'delPed') { const p = pdvs.get(a.dataset.p), o = (p.hist || []).find(x => x.id === id); if (!o) return;
-    if (act === 'pago') return fire(updateDoc(pref(p.id), { hist: p.hist.map(x => x.id === id ? { ...x, pg: 'pago' } : x) }), 'Marcado como pago');
+    if (act === 'pago') return fire(updateDoc(pref(p.id), { hist: p.hist.map(x => x.id === id ? { ...x, pg: 'pago', pgEm: today() } : x) }), 'Pagamento recebido');
     fire(updateDoc(pref(p.id), { hist: p.hist.filter(x => x.id !== id) })); toast('Registro apagado', () => fire(updateDoc(pref(p.id), { hist: arrayUnion(clone(o)) }), 'Registro restaurado')); return }
   if (!can.admin()) return;
   if (act === 'bonif') return bonForm(id);
@@ -813,11 +881,11 @@ document.addEventListener('click', e => {
 });
 document.addEventListener('change', async e => {
   const t = e.target;
-  if (t.matches('select[data-act=papel]') && can.admin()) return fire(updateDoc(doc(db, 'acessos', t.dataset.id), { papel: t.value }), 'Papel alterado');
+  if (t.matches('select[data-act=papel]') && can.admin()) return fire(setDoc(doc(db, 'acessos', t.dataset.id), { papel: t.value === 'adminv' ? 'admin' : t.value, vende: t.value === 'adminv' }, { merge: true }), 'Papel alterado');
   if (t.id === 'impF' && t.files[0]) importar(t.files[0]);
 });
 document.addEventListener('keydown', e => { if (e.key === 'Enter' && e.target.matches('tr[data-act]')) detail(e.target.dataset.id) });
-document.addEventListener('input', e => { const m = { fq: 'q', fst: 'st', fcid: 'cid', ftipo: 'tipo', fsort: 'sort' }[e.target.id]; if (m) { F[m] = e.target.value; render() } });
+document.addEventListener('input', e => { const m = { fq: 'q', fst: 'st', fcid: 'cid', ftipo: 'tipo', fsort: 'sort', fven: 'ven' }[e.target.id]; if (m) { F[m] = e.target.value; render() } });
 addEventListener('hashchange', () => { if (location.hash === '#novo') { if (me && can.write()) pedForm() } else { render(); scrollTo({ top: 0 }) } });
 addEventListener('load', () => { if (location.hash === '#novo') setTimeout(() => { if (me && can.write()) pedForm() }, 1500) });
 

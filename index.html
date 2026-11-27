@@ -242,6 +242,29 @@ button.card.colab{text-align:left;font:inherit;color:inherit;cursor:pointer;tran
 .bvl span{color:var(--mute);font-size:14px}
 tfoot td{background:var(--soft);border-bottom:0}
 @media(min-width:761px){.ptab{table-layout:fixed}}
+.kpis{display:none!important}
+body:not(.vend) [data-vend]{display:none!important}
+.switch{margin-bottom:14px}.switch .chip{min-height:44px;padding:0 20px;font-size:16px}
+.ptop{display:flex;flex-wrap:wrap;gap:10px 16px;align-items:flex-end;justify-content:space-between;margin-bottom:6px}.ptop h2{margin:0}
+.alerts{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,210px),1fr));gap:10px}
+.al{background:var(--card);border:1px solid var(--line);border-left:5px solid var(--ink);border-radius:14px;padding:12px 14px;text-decoration:none;color:var(--ink);display:flex;flex-direction:column;gap:2px;transition:transform 160ms var(--ease-out)}
+.al:active{transform:scale(.98)}.al .num{font-size:28px;font-weight:800}.al small{color:var(--mute);font-size:14px;line-height:1.25}
+.al.late{border-left-color:var(--brick)}.al.late .num{color:var(--brick)}.al.hot{border-left-color:var(--acc)}
+.empty.ok{border-style:solid;color:var(--ok);font-weight:600}
+.mets.m3{grid-template-columns:repeat(3,minmax(0,1fr))}.mets.m4{grid-template-columns:repeat(4,minmax(0,1fr))}.mets.m3 .met,.mets.m4 .met{grid-column:auto}
+.mets.m3 .met .num,.mets.m4 .met .num{font-size:clamp(24px,3.2vw,34px)}
+.cob{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px 16px;display:flex;flex-direction:column;gap:10px}
+.cob.late{border-color:var(--brick);box-shadow:inset 4px 0 0 var(--brick)}
+.cob-t{display:flex;justify-content:space-between;gap:10px;align-items:flex-start}.cob .due{display:flex;flex-direction:column;align-items:flex-end;gap:4px}.cob .due .num{font-size:24px}
+.fd{display:flex;justify-content:space-between;gap:10px;align-items:center;padding:8px 0;border-bottom:1px solid var(--soft)}.fd>div{flex:1;min-width:0}.fd .lk{flex:none;white-space:nowrap;padding:4px 0}
+@media(min-width:761px){.ptop .cb{display:none}}
+.scrollbox.tall{max-height:70dvh}
+.rr i{display:grid;place-items:center}
+.pr{display:flex;gap:12px;align-items:center}.ph{width:46px;height:46px;border-radius:10px;background:var(--soft);border:1px dashed var(--line);flex:none;position:relative;overflow:hidden;display:grid;place-items:center}
+.ph i{font-style:normal;font-size:10px;color:var(--mute)}.ph img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;background:#fff}
+.rec .rb.two{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.rec .rpix{margin:10px 0;border:2px solid #8a0b0b;border-radius:10px;padding:10px 12px;background:#fbf3f3}.rec .rpix b{color:#8a0b0b}
+.rec .rsig{margin-top:16px}.rec .rsig .ln{border-bottom:1px solid #1a1714;height:34px;margin:4px 0}
 pre,.scroll{overflow-x:auto}
 @media(max-width:900px){.kpis{grid-template-columns:repeat(3,minmax(0,1fr))}.tiers{grid-template-columns:repeat(2,minmax(0,1fr))}.hero{grid-template-columns:minmax(0,1fr)}}
 @media(max-width:760px){
@@ -259,6 +282,10 @@ pre,.scroll{overflow-x:auto}
  .bvcard,.bvcard.carga{grid-template-columns:minmax(0,1fr)}
  .scrollbox{max-height:60dvh}
  .mets.t5{grid-template-columns:repeat(2,minmax(0,1fr))}.mets.t5 .met:last-child{grid-column:span 2}
+ .mets.m3,.mets.m4{grid-template-columns:repeat(2,minmax(0,1fr))}.mets.m3 .met:first-child{grid-column:span 2}
+ .rec .rb.two{grid-template-columns:1fr}
+ .alerts{grid-template-columns:repeat(2,minmax(0,1fr))}.al .num{font-size:22px}.al small{font-size:13px}
+ .tabs .dsk{display:none!important}
  main{padding:18px 16px calc(150px + var(--safeB))}
  #toast{bottom:calc(150px + var(--safeB))}
  dialog{width:100%;max-width:100%;height:100dvh;max-height:100dvh;border-radius:0;margin:0}
@@ -305,17 +332,13 @@ pre,.scroll{overflow-x:auto}
 <div class="net" id="net"><i></i><span id="netMsg"></span></div>
 <nav class="tabs" id="tabs">
   <a href="#inicio"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 11l9-7 9 7v9a1 1 0 0 1-1 1h-5v-6h-6v6H4a1 1 0 0 1-1-1z"/></svg>Início</a>
-  <a href="#repor"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12h4l3-8 4 16 3-8h4"/></svg>Repor</a>
+  <a href="#cobrar" data-cob><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="6" width="18" height="13" rx="2"/><path d="M3 10h18M7 15h3"/></svg>Cobrar</a>
+  <a href="#repor" data-vend><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12h4l3-8 4 16 3-8h4"/></svg>Repor</a>
+  <a href="#repor" class="dsk" data-gest><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12h4l3-8 4 16 3-8h4"/></svg>Repor</a>
   <a href="#pontos"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 21s-7-6.2-7-11.5A7 7 0 0 1 19 9.5C19 14.8 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.5"/></svg>Pontos</a>
-  <a href="#ranking" class="dsk" data-gest>Ranking</a>
-  <a href="#bonus" data-gest><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3l2.6 5.6 6 .7-4.5 4.1 1.2 6L12 16.4 6.7 19.4l1.2-6L3.4 9.3l6-.7z"/></svg>Bônus</a>
-  <a href="#triagem" class="dsk" data-tri data-gest>Triagem</a>
-  <a href="#time" class="dsk" data-admin hidden>Desempenho</a>
-  <a href="#notas" class="dsk" data-admin hidden>Notas</a>
-  <a href="#equipe" class="dsk" data-admin hidden>Equipe</a>
+  <a href="#time" data-admin hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="8" r="3.2"/><path d="M3 20c0-3.3 2.7-6 6-6s6 2.7 6 6"/><path d="M16 4.5a3 3 0 0 1 0 6M18 14c2 .8 3 2.8 3 6"/></svg>Equipe</a>
   <a href="#produtos" class="dsk" data-gest>Produtos</a>
-  <a href="#ajustes" class="dsk" data-gest>Ajustes</a>
-  <a href="#mais" class="mob"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16M4 12h16M4 18h16"/></svg>Mais</a>
+  <a href="#mais"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16M4 12h16M4 18h16"/></svg>Mais</a>
 </nav>
 <main id="view"><div class="empty">Carregando…</div></main>
 <button class="fab" data-act="newPed" aria-label="Registrar pedido ou visita">+</button>
